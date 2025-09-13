@@ -76,6 +76,8 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
+> **Note**: If you get `uvx ENOENT` errors, use the full path to `uvx` instead. Find it with `which uvx` and replace `"command": "uvx"` with `"command": "/full/path/to/uvx"`. See [troubleshooting section](#uvx-command-not-found-enoent-error) for details.
+
 #### 3. Restart Claude Desktop and Test
 
 ```
@@ -112,6 +114,8 @@ Create or edit the MCP configuration file:
   }
 }
 ```
+
+> **Note**: If you get `uvx ENOENT` errors, use the full path to `uvx` instead. Find it with `which uvx` and replace `"command": "uvx"` with `"command": "/full/path/to/uvx"`. See [troubleshooting section](#uvx-command-not-found-enoent-error) for details.
 
 #### 3. Restart Cursor and Test
 
@@ -325,6 +329,31 @@ pip install --verbose mcp-ds-toolkit-server
 # Check if the command is available
 which mcp-ds-toolkit-server
 ```
+
+#### uvx Command Not Found (ENOENT Error)
+If you see errors like `spawn uvx ENOENT` in Claude Desktop logs, this means `uvx` is not in the system PATH that Claude Desktop can access.
+
+**Solution**: Use the full path to `uvx` in your configuration:
+
+1. **Find your uvx path**:
+   ```bash
+   which uvx
+   # Example output: /Users/username/.pyenv/shims/uvx
+   ```
+
+2. **Update your configuration with the full path**:
+   ```json
+   {
+     "mcpServers": {
+       "ds-toolkit": {
+         "command": "/Users/username/.pyenv/shims/uvx",
+         "args": ["mcp-ds-toolkit-server"]
+       }
+     }
+   }
+   ```
+
+**Why this happens**: Claude Desktop runs with a limited PATH environment that may not include directories where `uvx` is installed (like `~/.pyenv/shims` for pyenv users, `~/.local/bin`, or other Python tool directories).
 
 #### Claude/Cursor Not Finding Tools
 1. **Check configuration file location**:

@@ -41,6 +41,36 @@ MCP DS Toolkit Server enables AI assistants to perform complete data science wor
 
 > **Note**: Cloud storage capabilities (AWS S3, Google Cloud, Azure) are available as optional dependencies but not yet fully implemented. Current version focuses on local storage and processing.
 
+## 📋 Prerequisites
+
+### Install uvx (if not already installed)
+
+This project uses `uvx` for easy Python package execution. If you don't have it installed:
+
+#### macOS/Linux
+```bash
+# Install uv first (if not installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# uvx comes bundled with uv
+```
+
+#### Windows
+```bash
+# Install uv first (if not installed)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# uvx comes bundled with uv
+```
+
+#### Alternative: Using pip
+If you prefer not to use uvx, you can install directly with pip:
+```bash
+pip install mcp-ds-toolkit-server
+```
+
+Then use `mcp-ds-toolkit-server` as the command instead of `uvx mcp-ds-toolkit-server` in the configuration examples below.
+
 ## ⚡ Quick Start
 
 Choose your preferred AI assistant:

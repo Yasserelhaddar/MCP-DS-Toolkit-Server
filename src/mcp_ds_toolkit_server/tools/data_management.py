@@ -971,7 +971,6 @@ class DataManagementTools(BaseMCPTools):
                     Path.home() / "Downloads" / source,
                     # Common temp locations for uploaded files
                     Path("/tmp") / source,
-                    Path("/var/folders") / "**" / source,  # macOS temp
                 ]
 
                 # Check each location
@@ -1004,7 +1003,6 @@ class DataManagementTools(BaseMCPTools):
                     # Search common upload locations
                     search_patterns = [
                         f"/tmp/**/{source}",
-                        f"/var/folders/**/{source}",
                         f"{Path.home()}/**/{source}",
                         f"{Path.cwd()}/**/{source}",
                     ]

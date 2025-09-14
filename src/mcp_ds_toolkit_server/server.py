@@ -441,12 +441,26 @@ async def list_resources() -> list[types.Resource]:
     Returns:
         list[types.Resource]: List of available resources (datasets, models, experiments, etc.)
 
-    Note:
-        This function is currently a placeholder and will be populated
-        as resource management features are implemented.
+    Raises:
+        ValueError: If the server is not initialized
     """
-    # This will be populated as we implement resource management
-    return []
+    if mcp_server is None:
+        raise ValueError("Server not initialized")
+
+    # Get all resources from the artifact bridge
+    resources = mcp_server.shared_artifact_bridge.get_all_resources()
+
+    # Convert to MCP Resource types
+    mcp_resources = []
+    for resource in resources:
+        mcp_resources.append(types.Resource(
+            uri=resource["uri"],
+            name=resource["name"],
+            description=resource.get("description", ""),
+            mimeType=resource.get("mimeType", "application/octet-stream")
+        ))
+
+    return mcp_resources
 
 
 @server.read_resource()
@@ -463,14 +477,27 @@ async def read_resource(uri: str) -> str:
         str: Content of the resource
 
     Raises:
-        ValueError: If the resource URI is not recognized
-
-    Note:
-        This function is currently a placeholder and will be implemented
-        as resource management features are added.
+        ValueError: If the server is not initialized or resource URI is not recognized
     """
-    # This will be implemented as we add resource management
-    raise ValueError(f"Resource {uri} not found")
+    if mcp_server is None:
+        raise ValueError("Server not initialized")
+
+    try:
+        # Get resource content from artifact bridge
+        content_bytes = mcp_server.shared_artifact_bridge.get_resource_content(uri)
+
+        # Convert bytes to string for MCP protocol
+        return content_bytes.decode('utf-8')
+
+    except KeyError:
+        raise ValueError(f"Resource {uri} not found")
+    except UnicodeDecodeError:
+        # If content is binary, return base64 encoded
+        import base64
+        content_bytes = mcp_server.shared_artifact_bridge.get_resource_content(uri)
+        return base64.b64encode(content_bytes).decode('ascii')
+    except Exception as e:
+        raise ValueError(f"Error reading resource {uri}: {str(e)}")
 
 
 async def perform_startup_checks() -> None:

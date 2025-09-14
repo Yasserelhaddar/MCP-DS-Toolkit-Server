@@ -400,8 +400,6 @@ class LocalExperimentTracker:
             conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
         
         # Clean up artifacts directory
-        # Get artifact path before deletion
-        artifact_path = self.artifacts_path / "**" / run_id
         import shutil
         for path in self.artifacts_path.glob(f"*/{run_id}"):
             if path.is_dir():

@@ -977,16 +977,7 @@ class DataManagementTools(BaseMCPTools):
                 found_file = None
                 for location in search_locations:
                     try:
-                        if location.name.endswith("**"):
-                            # Use glob for pattern matching
-                            import glob
-
-                            pattern = str(location)
-                            matches = glob.glob(pattern, recursive=True)
-                            if matches:
-                                found_file = Path(matches[0])
-                                break
-                        elif location.exists() and location.is_file():
+                        if location.exists() and location.is_file():
                             found_file = location
                             break
                     except (OSError, PermissionError):
@@ -1000,17 +991,30 @@ class DataManagementTools(BaseMCPTools):
                     import glob
                     import os
 
-                    # Search common upload locations
+                    # Search common upload locations (non-recursive to avoid performance issues)
                     search_patterns = [
-                        f"/tmp/**/{source}",
-                        f"{Path.home()}/**/{source}",
-                        f"{Path.cwd()}/**/{source}",
+                        f"/tmp/{source}",
+                        f"{Path.home()}/Downloads/{source}",
+                        f"{Path.home()}/Desktop/{source}",
+                        f"{Path.cwd()}/{source}",
                     ]
+
+                    import time
+                    search_start_time = time.time()
+                    max_search_time = 30  # 30 second timeout
+                    max_results = 100  # Limit number of results to process
 
                     for pattern in search_patterns:
                         try:
-                            matches = glob.glob(pattern, recursive=True)
+                            # Check timeout
+                            if time.time() - search_start_time > max_search_time:
+                                self.logger.warning("File search timeout reached, stopping search")
+                                break
+
+                            matches = glob.glob(pattern)
                             if matches:
+                                # Limit results to prevent excessive processing
+                                matches = matches[:max_results]
                                 # Take the most recently modified file
                                 most_recent = max(matches, key=os.path.getmtime)
                                 source = most_recent
@@ -1018,7 +1022,8 @@ class DataManagementTools(BaseMCPTools):
                                     f"Found uploaded file via search at: {source}"
                                 )
                                 break
-                        except (OSError, PermissionError, ValueError):
+                        except (OSError, PermissionError, ValueError) as e:
+                            self.logger.debug(f"Search pattern {pattern} failed: {e}")
                             continue
 
         try:
@@ -1593,11 +1598,27 @@ class DataManagementTools(BaseMCPTools):
                 filesystem_path=Path(output_path) if persistence_config.should_save_to_filesystem() else None
             )
 
+            # Register as MCP Resource for Claude Desktop access
+            mime_type_map = {
+                "csv": "text/csv",
+                "json": "application/json",
+                "parquet": "application/parquet",
+                "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            }
+            resource_uri = self.artifact_bridge.register_resource(
+                artifact_key=export_key,
+                name=f"Exported {dataset_name} ({format_type})",
+                mime_type=mime_type_map.get(format_type, "application/octet-stream"),
+                description=f"Dataset '{dataset_name}' exported in {format_type} format"
+            )
+
             # Format result text based on persistence mode
             result_text = f"Successfully exported dataset '{dataset_name}'\n"
             result_text += f"Format: {format_type}\n"
             result_text += f"Shape: {dataset.shape}\n"
             result_text += f"Persistence Mode: {persistence_mode}\n"
+            result_text += f"Resource URI: {resource_uri}\n"
+            result_text += "📥 Dataset available for download in Claude Desktop Resources\n"
             
             # Show artifact storage information
             if "memory_reference" in artifact_storage:

@@ -234,8 +234,9 @@ class ArtifactBridge:
         self.config = config
         self.memory_artifacts: Dict[str, Any] = {}
         self.artifact_metadata: Dict[str, Dict[str, Any]] = {}
+        self.resource_registry: Dict[str, Dict[str, Any]] = {}  # URI -> Resource info mapping
         self.serializer = ArtifactSerializer()
-        
+
         logger.info(f"ArtifactBridge initialized with mode: {config.mode.value}")
     
     def store_artifact(self, key: str, artifact: Any, artifact_type: str, 
@@ -525,6 +526,94 @@ class ArtifactBridge:
         except Exception:
             # If estimation fails, return 0
             return 0
+
+    def register_resource(self, artifact_key: str, name: str, mime_type: str,
+                         description: Optional[str] = None) -> str:
+        """Register an artifact as an MCP Resource.
+
+        Args:
+            artifact_key: Key of the stored artifact
+            name: Human-readable name for the resource
+            mime_type: MIME type of the resource (e.g., 'text/csv', 'image/png')
+            description: Optional description of the resource
+
+        Returns:
+            str: Generated URI for the resource
+
+        Raises:
+            KeyError: If artifact_key is not found in stored artifacts
+        """
+        if artifact_key not in self.artifact_metadata:
+            raise KeyError(f"Artifact '{artifact_key}' not found in storage")
+
+        # Generate URI using ds-toolkit scheme
+        uri = f"ds-toolkit://artifacts/{artifact_key}"
+
+        # Store resource information
+        self.resource_registry[uri] = {
+            "uri": uri,
+            "name": name,
+            "description": description or f"Artifact: {name}",
+            "mime_type": mime_type,
+            "artifact_key": artifact_key,
+            "registered_at": datetime.now().isoformat()
+        }
+
+        logger.debug(f"Registered resource: {uri} -> {artifact_key}")
+        return uri
+
+    def get_all_resources(self) -> List[Dict[str, str]]:
+        """Get all registered resources for MCP list_resources.
+
+        Returns:
+            List of resource dictionaries with uri, name, description, mime_type
+        """
+        return [
+            {
+                "uri": resource_info["uri"],
+                "name": resource_info["name"],
+                "description": resource_info["description"],
+                "mimeType": resource_info["mime_type"]
+            }
+            for resource_info in self.resource_registry.values()
+        ]
+
+    def get_resource_content(self, uri: str) -> bytes:
+        """Get the content of a resource by URI.
+
+        Args:
+            uri: URI of the resource to retrieve
+
+        Returns:
+            bytes: Content of the resource
+
+        Raises:
+            KeyError: If URI is not found in resource registry
+            ValueError: If artifact content cannot be retrieved
+        """
+        if uri not in self.resource_registry:
+            raise KeyError(f"Resource URI '{uri}' not found")
+
+        resource_info = self.resource_registry[uri]
+        artifact_key = resource_info["artifact_key"]
+
+        # Get the artifact content
+        artifact_data = self.get_artifact(artifact_key)
+        if artifact_data is None:
+            raise ValueError(f"Artifact data for '{artifact_key}' not found")
+
+        # Convert to bytes based on artifact type
+        if isinstance(artifact_data, bytes):
+            return artifact_data
+        elif isinstance(artifact_data, str):
+            return artifact_data.encode('utf-8')
+        elif isinstance(artifact_data, pd.DataFrame):
+            # Convert DataFrame to CSV bytes
+            return artifact_data.to_csv(index=False).encode('utf-8')
+        else:
+            # Try to serialize as JSON
+            import json
+            return json.dumps(artifact_data, default=str).encode('utf-8')
 
 
 def create_default_persistence_config(mode: str = "memory_only") -> PersistenceConfig:

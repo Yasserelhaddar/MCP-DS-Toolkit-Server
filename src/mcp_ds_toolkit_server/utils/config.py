@@ -17,10 +17,10 @@ class Settings:
     """Configuration settings for the MCP MLOps server."""
 
     # Application settings
-    app_name: str = field(default="mcp-mlops-server")
-    app_version: str = field(default="0.1.0")
+    app_name: str = field(default="mcp-ds-toolkit-server")
+    app_version: str = field(default="0.1.4")
     app_description: str = field(
-        default="MCP MLOps Server - A comprehensive MLOps platform with natural language interface"
+        default="MCP DS Toolkit Server - A comprehensive DS toolkit with natural language interface"
     )
 
     # Server settings

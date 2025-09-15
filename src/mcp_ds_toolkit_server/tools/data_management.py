@@ -119,6 +119,67 @@ class DataManagementTools(BaseMCPTools):
         
         self.logger.info(f"DataManagementTools initialized - Registry ID: {id(self.datasets)}, Keys: {list(self.datasets.keys())}")
 
+    def _create_temp_file_from_content(self, content: str, format: str, filename: str = None) -> Path:
+        """Create temporary file from content string.
+
+        Args:
+            content: File content as string
+            format: File format (csv, json, etc.)
+            filename: Optional original filename for better error messages
+
+        Returns:
+            Path to created temporary file
+        """
+        import tempfile
+        from pathlib import Path
+
+        if filename:
+            # Use original filename for better error messages
+            suffix = Path(filename).suffix
+        else:
+            # Generate suffix from format
+            suffix = f".{format}"
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False) as f:
+            f.write(content)
+            temp_path = Path(f.name)
+
+        self.logger.info(f"Created temporary file from content: {temp_path}")
+        return temp_path
+
+    def _cleanup_temp_file(self, file_path: Path) -> None:
+        """Cleanup temporary file.
+
+        Args:
+            file_path: Path to temporary file to cleanup
+        """
+        try:
+            if file_path.exists():
+                file_path.unlink()
+                self.logger.debug(f"Cleaned up temporary file: {file_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to cleanup temporary file {file_path}: {e}")
+
+    def _get_mime_type_for_format(self, format: str) -> str:
+        """Get MIME type for dataset format.
+
+        Args:
+            format: Dataset format (csv, json, etc.)
+
+        Returns:
+            MIME type string
+        """
+        mime_types = {
+            "csv": "text/csv",
+            "json": "application/json",
+            "parquet": "application/octet-stream",
+            "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "sql": "text/plain",
+            "hdf5": "application/octet-stream",
+            "feather": "application/octet-stream"
+        }
+        return mime_types.get(format, "text/plain")
+
     # Algorithm mapping constants for ML evaluation tools
     CLASSIFICATION_ALGORITHMS = {
         "random_forest": RandomForestClassifier,
@@ -266,7 +327,11 @@ class DataManagementTools(BaseMCPTools):
                     "properties": {
                         "source": {
                             "type": "string",
-                            "description": "Path to the dataset file or database connection string",
+                            "description": "Path to the dataset file or database connection string (optional if file_content is provided)",
+                        },
+                        "file_content": {
+                            "type": "string",
+                            "description": "Raw file content as string (alternative to source for uploaded files)",
                         },
                         "format": {
                             "type": "string",
@@ -307,7 +372,7 @@ class DataManagementTools(BaseMCPTools):
                             "additionalProperties": True,
                         },
                     },
-                    "required": ["source", "format", "name"],
+                    "required": ["format", "name"],
                 },
             ),
             # Dataset Validation Tools
@@ -927,13 +992,53 @@ class DataManagementTools(BaseMCPTools):
         self, arguments: Dict[str, Any]
     ) -> List[TextContent]:
         """Handle load_dataset tool call."""
-        source = arguments["source"]
+        source = arguments.get("source")
+        file_content = arguments.get("file_content")
         format_type = arguments["format"]
         name = arguments["name"]
         options = arguments.get("options", {})
 
+        # Validate that either source or file_content is provided
+        if not source and not file_content:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "status": "error",
+                        "message": "Either 'source' or 'file_content' parameter must be provided",
+                        "dataset_name": name
+                    })
+                )
+            ]
+
+        # Handle file_content parameter (uploaded files)
+        temp_file_path = None
+        if file_content:
+            try:
+                # Create temporary file from content
+                temp_file_path = self._create_temp_file_from_content(
+                    content=file_content,
+                    format=format_type,
+                    filename=source  # Use source as filename hint if provided
+                )
+                # Use the temporary file as the source
+                source = str(temp_file_path)
+                self.logger.info(f"Processing uploaded file content as: {source}")
+
+            except Exception as e:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "status": "error",
+                            "message": f"Failed to process file content: {str(e)}",
+                            "dataset_name": name
+                        })
+                    )
+                ]
+
         # Handle sklearn dataset sources
-        if source.startswith("sklearn.datasets."):
+        if source and source.startswith("sklearn.datasets."):
             # Extract the dataset name from sklearn.datasets.name format
             sklearn_name = source.split(".")[-1]
             source = sklearn_name
@@ -1057,7 +1162,23 @@ class DataManagementTools(BaseMCPTools):
                 }
             )
 
-            # Local storage only (no external versioning)
+            # Register dataset as MCP Resource for Claude access
+            try:
+                # Convert dataset to CSV format for resource storage
+                dataset_content = dataset.to_csv(index=False)
+                resource_uri = self.artifact_bridge.register_resource(
+                    artifact_key=f"dataset_{name}",
+                    name=f"Dataset: {name}",
+                    mime_type=self._get_mime_type_for_format(format_type),
+                    description=f"Loaded dataset: {len(dataset)} rows, {len(dataset.columns)} columns"
+                )
+                self.logger.info(f"Registered dataset '{name}' as MCP Resource: {resource_uri}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register dataset '{name}' as MCP Resource: {e}")
+
+            # Cleanup temporary file if created from file_content
+            if temp_file_path:
+                self._cleanup_temp_file(temp_file_path)
 
             return [
                 TextContent(
@@ -1091,6 +1212,11 @@ class DataManagementTools(BaseMCPTools):
                 error_msg = f"Error loading dataset '{name}' from {arguments['source']}: {str(e)}"
 
             self.logger.error(error_msg)
+
+            # Cleanup temporary file if created from file_content
+            if temp_file_path:
+                self._cleanup_temp_file(temp_file_path)
+
             error_result = {
                 "status": "error",
                 "message": error_msg,

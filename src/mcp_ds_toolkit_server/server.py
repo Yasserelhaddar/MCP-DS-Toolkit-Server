@@ -529,7 +529,45 @@ async def _read_file_resource(uri: str) -> str:
         if parsed.scheme != "file":
             raise ValueError(f"Invalid file URI scheme: {parsed.scheme}")
 
-        file_path = Path(parsed.path)
+        # Handle file path from URI
+        file_path_str = parsed.path
+
+        # If path doesn't start with /, it's a relative path (like "fitness_dataset.csv")
+        # Try to find it in common locations
+        if not file_path_str.startswith('/'):
+            potential_locations = [
+                Path.cwd() / file_path_str,  # Current directory
+                Path.home() / "Downloads" / file_path_str,  # Downloads folder
+                Path("/tmp") / file_path_str,  # Temp directory
+            ]
+
+            # Also check macOS temporary items
+            temp_patterns = [
+                Path("/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
+                Path("/private/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
+            ]
+
+            file_path = None
+            # Check direct locations first
+            for location in potential_locations:
+                if location.exists() and location.is_file():
+                    file_path = location
+                    break
+
+            # Check glob patterns if not found
+            if not file_path:
+                for pattern in temp_patterns:
+                    for glob_path in pattern:
+                        if glob_path.exists() and glob_path.is_file():
+                            file_path = glob_path
+                            break
+                    if file_path:
+                        break
+
+            if not file_path:
+                raise ValueError(f"File not found in common locations: {file_path_str}")
+        else:
+            file_path = Path(file_path_str)
 
         # Security validation
         if not file_path.exists():

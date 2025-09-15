@@ -543,6 +543,9 @@ async def _read_file_resource(uri: str) -> str:
         if not file_path_str.startswith('/'):
             # Expand search locations for file uploads
             potential_locations = [
+                # Artifacts directory first (where we expect uploaded files)
+                settings.data_dir / file_path_str,
+                settings.workspace_path / file_path_str,
                 Path.cwd() / file_path_str,  # Current directory
                 Path.home() / "Downloads" / file_path_str,  # Downloads folder
                 Path("/tmp") / file_path_str,  # Temp directory
@@ -573,6 +576,19 @@ async def _read_file_resource(uri: str) -> str:
                 if location.exists() and location.is_file():
                     file_path = location
                     logger.info(f"Found file at: {file_path}")
+
+                    # If file is outside artifacts directory, copy it to data dir
+                    if not str(file_path).startswith(str(settings.data_dir.parent)):
+                        try:
+                            settings.data_dir.mkdir(parents=True, exist_ok=True)
+                            destination = settings.data_dir / file_path.name
+                            if not destination.exists():
+                                import shutil
+                                shutil.copy2(file_path, destination)
+                                logger.info(f"Copied uploaded file to artifacts: {destination}")
+                                file_path = destination
+                        except Exception as e:
+                            logger.warning(f"Could not copy file to artifacts directory: {e}")
                     break
 
             # Check glob patterns if not found
@@ -584,6 +600,18 @@ async def _read_file_resource(uri: str) -> str:
                             if glob_path.exists() and glob_path.is_file():
                                 file_path = glob_path
                                 logger.info(f"Found file via glob at: {file_path}")
+
+                                # Copy to artifacts directory
+                                try:
+                                    settings.data_dir.mkdir(parents=True, exist_ok=True)
+                                    destination = settings.data_dir / file_path.name
+                                    if not destination.exists():
+                                        import shutil
+                                        shutil.copy2(file_path, destination)
+                                        logger.info(f"Copied uploaded file to artifacts: {destination}")
+                                        file_path = destination
+                                except Exception as e:
+                                    logger.warning(f"Could not copy file to artifacts directory: {e}")
                                 break
                         if file_path:
                             break

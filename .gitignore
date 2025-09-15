@@ -149,3 +149,4 @@ artifacts/
 
 # UV
 .uv/
+mcp_server_filesystem/

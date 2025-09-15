@@ -529,45 +529,75 @@ async def _read_file_resource(uri: str) -> str:
         if parsed.scheme != "file":
             raise ValueError(f"Invalid file URI scheme: {parsed.scheme}")
 
-        # Handle file path from URI
+        # Handle file path from URI - support both standard and Claude Desktop formats
         file_path_str = parsed.path
 
-        # If path doesn't start with /, it's a relative path (like "fitness_dataset.csv")
-        # Try to find it in common locations
+        # Handle Claude Desktop format: file://filename.csv (netloc contains filename, path is empty)
+        if not file_path_str and parsed.netloc:
+            file_path_str = parsed.netloc
+            logger.info(f"Using netloc as filename for Claude Desktop format: {file_path_str}")
+
+        logger.info(f"Searching for file: {file_path_str}")
+
+        # If path doesn't start with /, it's a relative path - search common locations
         if not file_path_str.startswith('/'):
+            # Expand search locations for file uploads
             potential_locations = [
                 Path.cwd() / file_path_str,  # Current directory
                 Path.home() / "Downloads" / file_path_str,  # Downloads folder
                 Path("/tmp") / file_path_str,  # Temp directory
+                Path("/var/tmp") / file_path_str,  # Alternative temp
+                Path.home() / "Desktop" / file_path_str,  # Desktop
+                Path.home() / "Documents" / file_path_str,  # Documents
             ]
 
-            # Also check macOS temporary items
+            # Add environment-based locations
+            if os.getenv("TMPDIR"):
+                potential_locations.append(Path(os.getenv("TMPDIR")) / file_path_str)
+            if os.getenv("TEMP"):
+                potential_locations.append(Path(os.getenv("TEMP")) / file_path_str)
+
+            # macOS temporary items patterns
             temp_patterns = [
                 Path("/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
                 Path("/private/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
+                Path("/var/folders").glob(f"*/*/*/{file_path_str}"),  # Broader search
             ]
 
             file_path = None
+            searched_locations = []
+
             # Check direct locations first
             for location in potential_locations:
+                searched_locations.append(f"{location} ({'exists' if location.exists() else 'not found'})")
                 if location.exists() and location.is_file():
                     file_path = location
+                    logger.info(f"Found file at: {file_path}")
                     break
 
             # Check glob patterns if not found
             if not file_path:
                 for pattern in temp_patterns:
-                    for glob_path in pattern:
-                        if glob_path.exists() and glob_path.is_file():
-                            file_path = glob_path
+                    try:
+                        for glob_path in pattern:
+                            searched_locations.append(f"{glob_path} ({'exists' if glob_path.exists() else 'not found'})")
+                            if glob_path.exists() and glob_path.is_file():
+                                file_path = glob_path
+                                logger.info(f"Found file via glob at: {file_path}")
+                                break
+                        if file_path:
                             break
-                    if file_path:
-                        break
+                    except Exception as e:
+                        logger.debug(f"Glob pattern {pattern} failed: {e}")
 
             if not file_path:
-                raise ValueError(f"File not found in common locations: {file_path_str}")
+                search_details = "\n".join([f"  - {loc}" for loc in searched_locations])
+                error_msg = f"File not found: {file_path_str}\n\nSearched locations:\n{search_details}\n\nWorking directory: {Path.cwd()}\nEnvironment TMPDIR: {os.getenv('TMPDIR', 'not set')}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
         else:
             file_path = Path(file_path_str)
+            logger.info(f"Using absolute path: {file_path}")
 
         # Security validation
         if not file_path.exists():

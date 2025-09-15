@@ -1,6 +1,6 @@
 [project]
 name = "mcp-ds-toolkit-server"
-version = "0.1.6"
+version = "0.1.7"
 description = "Pure standalone MCP Data Science Server - Complete DS workflows with local SQLite tracking, no external services required"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -469,6 +469,7 @@ async def read_resource(uri: str) -> str:
 
     Retrieves the content of a specific resource identified by its URI.
     Resources can include datasets, model files, experiment logs, etc.
+    Supports both ds-toolkit:// URIs (artifacts) and file:// URIs (uploaded files).
 
     Args:
         uri (str): URI of the resource to read
@@ -482,6 +483,11 @@ async def read_resource(uri: str) -> str:
     if mcp_server is None:
         raise ValueError("Server not initialized")
 
+    # Handle file:// URIs for uploaded files
+    if uri.startswith("file://"):
+        return await _read_file_resource(uri)
+
+    # Handle ds-toolkit:// URIs through artifact bridge
     try:
         # Get resource content from artifact bridge
         content_bytes = mcp_server.shared_artifact_bridge.get_resource_content(uri)
@@ -498,6 +504,64 @@ async def read_resource(uri: str) -> str:
         return base64.b64encode(content_bytes).decode('ascii')
     except Exception as e:
         raise ValueError(f"Error reading resource {uri}: {str(e)}")
+
+
+async def _read_file_resource(uri: str) -> str:
+    """Read a file:// resource with security validation.
+
+    Args:
+        uri: file:// URI to read
+
+    Returns:
+        str: File content as string
+
+    Raises:
+        ValueError: If file path is invalid or access denied
+    """
+    import os
+    from pathlib import Path
+    from urllib.parse import urlparse
+    import base64
+
+    try:
+        # Parse the file:// URI
+        parsed = urlparse(uri)
+        if parsed.scheme != "file":
+            raise ValueError(f"Invalid file URI scheme: {parsed.scheme}")
+
+        file_path = Path(parsed.path)
+
+        # Security validation
+        if not file_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+
+        if not file_path.is_file():
+            raise ValueError(f"Path is not a file: {file_path}")
+
+        # Additional security: prevent access to system files
+        resolved_path = file_path.resolve()
+
+        # Block access to system directories
+        blocked_paths = ["/etc", "/sys", "/proc", "/dev", "/root"]
+        for blocked in blocked_paths:
+            if str(resolved_path).startswith(blocked):
+                raise ValueError(f"Access denied to system path: {resolved_path}")
+
+        # Read file content
+        try:
+            # Try reading as text first
+            with open(resolved_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return content
+        except UnicodeDecodeError:
+            # If binary file, return base64 encoded
+            with open(resolved_path, 'rb') as f:
+                binary_content = f.read()
+            return base64.b64encode(binary_content).decode('ascii')
+
+    except Exception as e:
+        logger.error(f"Error reading file resource {uri}: {e}")
+        raise ValueError(f"Failed to read file resource: {str(e)}")
 
 
 async def perform_startup_checks() -> None:

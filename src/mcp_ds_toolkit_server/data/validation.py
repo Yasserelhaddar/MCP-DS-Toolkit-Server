@@ -16,8 +16,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 class ValidationSeverity(Enum):

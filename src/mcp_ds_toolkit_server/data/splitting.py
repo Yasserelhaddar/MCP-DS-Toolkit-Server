@@ -28,7 +28,10 @@ from sklearn.model_selection import (
 )
 from sklearn.preprocessing import LabelEncoder
 
-logger = logging.getLogger(__name__)
+from mcp_ds_toolkit_server.utils.common import ensure_directory
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
+logger = make_logger(__name__)
 
 
 class SplittingMethod(Enum):
@@ -760,7 +763,7 @@ class DataSplitter:
     def save_splits(self, output_dir: str, prefix: str = "split"):
         """Save splits to files."""
         output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        output_path = ensure_directory(output_path)
         
         for split_name, split_df in self._split_data.items():
             filename = f"{prefix}_{split_name}.csv"

@@ -21,7 +21,6 @@ import pandas as pd
 # Suppress pandas warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module='pandas')
 
-logger = logging.getLogger(__name__)
 from sklearn.datasets import (
     load_breast_cancer,
     load_diabetes,
@@ -34,8 +33,9 @@ from sklearn.datasets import (
 
 from mcp_ds_toolkit_server.exceptions import DataLoadingError, DatasetNotFoundError
 from mcp_ds_toolkit_server.utils.common import ensure_directory, validate_path
+from mcp_ds_toolkit_server.utils.logger import make_logger
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 class DataType(Enum):

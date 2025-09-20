@@ -18,8 +18,10 @@ from scipy import stats
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from sklearn.preprocessing import LabelEncoder
 
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 class ProfileType(Enum):

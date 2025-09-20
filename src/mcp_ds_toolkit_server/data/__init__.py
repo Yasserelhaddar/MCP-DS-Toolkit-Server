@@ -10,11 +10,13 @@ import logging
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
 # Suppress common warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 warnings.filterwarnings("ignore", category=FutureWarning, module='pandas')
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 from mcp_ds_toolkit_server.data.cleaning import (
     CleaningConfig,
@@ -36,8 +38,6 @@ from mcp_ds_toolkit_server.data.cleaning import (
 from mcp_ds_toolkit_server.data.loader import DataFormat, DatasetInfo, DatasetLoader, DataType
 
 from mcp_ds_toolkit_server.data.model_evaluation import (
-    CrossValidationConfig,
-    CrossValidationMethod,
     HyperparameterTuningConfig,
     HyperparameterTuningMethod,
     ModelEvaluator,
@@ -84,25 +84,6 @@ from mcp_ds_toolkit_server.data.validation import (
     ValidationIssue,
     ValidationRule,
     ValidationSeverity,
-)
-from mcp_ds_toolkit_server.data.versioning import (
-    DataDriftMetric,
-    DatasetVersion,
-    DriftReport,
-    PipelineConfig,
-    RemoteConfig,
-    RemoteStorageType,
-    VersioningConfig,
-    VersioningStrategy,
-)
-from mcp_ds_toolkit_server.data.visualization import (
-    ColorPalette,
-    DataVisualizer,
-    PlotConfig,
-    PlotResult,
-    PlotType,
-    quick_eda,
-    save_plots_to_html,
 )
 
 __all__ = [
@@ -161,31 +142,12 @@ __all__ = [
     "split_dataset",
     "create_time_series_splits",
     "create_stratified_splits",
-    # Versioning
-    "RemoteStorageType",
-    "VersioningStrategy",
-    "DataDriftMetric",
-    "RemoteConfig",
-    "VersioningConfig",
-    "DatasetVersion",
-    "DriftReport",
-    "PipelineConfig",
     # Model evaluation
     "ModelEvaluator",
     "TaskType",
-    "CrossValidationMethod",
     "HyperparameterTuningMethod",
-    "CrossValidationConfig", 
     "HyperparameterTuningConfig",
     "ModelPerformanceReport",
     "get_default_param_grids",
     "quick_model_comparison",
-    # Visualization
-    "DataVisualizer",
-    "PlotType",
-    "ColorPalette",
-    "PlotConfig",
-    "PlotResult",
-    "quick_eda",
-    "save_plots_to_html",
 ]

@@ -46,8 +46,10 @@ from sklearn.preprocessing import (
     TargetEncoder,
 )
 
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 class ScalingMethod(Enum):

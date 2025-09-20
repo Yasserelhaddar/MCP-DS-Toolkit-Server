@@ -21,10 +21,12 @@ from sklearn.impute import IterativeImputer, KNNImputer, SimpleImputer
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
 # Suppress scikit-learn warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 class MissingDataMethod(Enum):

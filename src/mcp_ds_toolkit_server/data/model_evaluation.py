@@ -41,7 +41,11 @@ from sklearn.model_selection import (
 )
 from sklearn.svm import SVC, SVR
 
-logger = logging.getLogger(__name__)
+# Import CrossValidationMethod and CrossValidationConfig from splitting module to avoid duplication
+from mcp_ds_toolkit_server.data.splitting import CrossValidationMethod, CrossValidationConfig
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
+logger = make_logger(__name__)
 
 
 class TaskType(Enum):
@@ -79,43 +83,6 @@ class TaskType(Enum):
     CLUSTERING = "clustering"
 
 
-class CrossValidationMethod(Enum):
-    """Enumeration of cross-validation methods for model evaluation.
-
-    This enum defines the available cross-validation strategies for model
-    evaluation and hyperparameter tuning. Each method is suitable for
-    different types of data and evaluation scenarios.
-
-    Attributes:
-        K_FOLD (str): Standard K-fold cross-validation.
-            Splits data into k folds randomly, suitable for most datasets.
-        STRATIFIED_K_FOLD (str): Stratified K-fold cross-validation.
-            Maintains class distribution in each fold, recommended for classification.
-        LEAVE_ONE_OUT (str): Leave-one-out cross-validation.
-            Uses single sample for validation, suitable for small datasets.
-        TIME_SERIES_SPLIT (str): Time series cross-validation.
-            Respects temporal ordering, essential for time series data.
-
-    Example:
-        Cross-validation method selection::
-
-            # For classification with balanced classes
-            cv_config = CrossValidationConfig(
-                method=CrossValidationMethod.STRATIFIED_K_FOLD,
-                n_folds=5
-            )
-
-            # For time series data
-            cv_config = CrossValidationConfig(
-                method=CrossValidationMethod.TIME_SERIES_SPLIT,
-                n_folds=3
-            )
-    """
-    K_FOLD = "k_fold"
-    STRATIFIED_K_FOLD = "stratified_k_fold"
-    LEAVE_ONE_OUT = "leave_one_out"
-    TIME_SERIES_SPLIT = "time_series_split"
-
 
 class HyperparameterTuningMethod(Enum):
     """Enumeration of hyperparameter optimization methods.
@@ -151,61 +118,6 @@ class HyperparameterTuningMethod(Enum):
     RANDOM_SEARCH = "random_search"
     BAYESIAN_OPTIMIZATION = "bayesian_optimization"
 
-
-@dataclass
-class CrossValidationConfig:
-    """Configuration class for cross-validation parameters.
-
-    This dataclass encapsulates all parameters needed to configure cross-validation
-    for model evaluation. It provides sensible defaults while allowing customization
-    for specific evaluation requirements.
-
-    Attributes:
-        method (CrossValidationMethod): Cross-validation strategy to use.
-            Defaults to stratified K-fold for maintaining class distribution.
-        n_folds (int): Number of cross-validation folds.
-            Must be at least 2. Default is 5 for good bias-variance trade-off.
-        random_state (int): Random seed for reproducible results.
-            Default is 42 for consistency across runs.
-        shuffle (bool): Whether to shuffle data before splitting.
-            Default is True for better fold distribution.
-        scoring (Union[str, List[str]]): Evaluation metric(s) to compute.
-            Single metric or list of metrics. Default is 'accuracy' for classification.
-
-    Raises:
-        ValueError: If n_folds is less than 2.
-
-    Example:
-        Cross-validation configuration setup::
-
-            # Basic classification configuration
-            cv_config = CrossValidationConfig(
-                method=CrossValidationMethod.STRATIFIED_K_FOLD,
-                n_folds=5,
-                scoring=['accuracy', 'f1', 'roc_auc']
-            )
-
-            # Regression configuration
-            cv_config = CrossValidationConfig(
-                method=CrossValidationMethod.K_FOLD,
-                n_folds=10,
-                scoring=['neg_mean_squared_error', 'r2']
-            )
-    """
-    method: CrossValidationMethod = CrossValidationMethod.STRATIFIED_K_FOLD
-    n_folds: int = 5
-    random_state: int = 42
-    shuffle: bool = True
-    scoring: Union[str, List[str]] = "accuracy"  # For classification
-
-    def __post_init__(self):
-        """Validate configuration parameters.
-
-        Raises:
-            ValueError: If n_folds is less than 2.
-        """
-        if self.n_folds < 2:
-            raise ValueError("n_folds must be at least 2")
 
 
 @dataclass
@@ -368,8 +280,7 @@ class ModelEvaluator:
             # Configure cross-validation
             cv_config = CrossValidationConfig(
                 method=CrossValidationMethod.STRATIFIED_K_FOLD,
-                n_folds=5,
-                scoring=['accuracy', 'f1', 'roc_auc']
+                n_splits=5
             )
 
             # Evaluate single model
@@ -491,8 +402,7 @@ class ModelEvaluator:
 
                 config = CrossValidationConfig(
                     method=CrossValidationMethod.STRATIFIED_K_FOLD,
-                    n_folds=10,
-                    scoring=['accuracy', 'f1', 'roc_auc']
+                    n_splits=10
                 )
 
                 model = RandomForestClassifier()
@@ -508,11 +418,11 @@ class ModelEvaluator:
         # Set up cross-validation method
         if config.method == CrossValidationMethod.STRATIFIED_K_FOLD:
             if self.task_type == TaskType.CLASSIFICATION:
-                cv = StratifiedKFold(n_splits=config.n_folds, shuffle=config.shuffle, random_state=config.random_state)
+                cv = StratifiedKFold(n_splits=config.n_splits, shuffle=config.shuffle, random_state=config.random_state)
             else:
-                cv = KFold(n_splits=config.n_folds, shuffle=config.shuffle, random_state=config.random_state)
+                cv = KFold(n_splits=config.n_splits, shuffle=config.shuffle, random_state=config.random_state)
         else:
-            cv = KFold(n_splits=config.n_folds, shuffle=config.shuffle, random_state=config.random_state)
+            cv = KFold(n_splits=config.n_splits, shuffle=config.shuffle, random_state=config.random_state)
         
         # Perform cross-validation
         cv_results = cross_validate(
@@ -899,7 +809,7 @@ def quick_model_comparison(
         evaluation with ModelEvaluator class.
     """
     evaluator = ModelEvaluator(task_type)
-    cv_config = CrossValidationConfig(n_folds=cv_folds)
+    cv_config = CrossValidationConfig(n_splits=cv_folds)
     
     results = evaluator.compare_models(X, y, cv_config=cv_config)
     

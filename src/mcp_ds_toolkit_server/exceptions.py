@@ -73,8 +73,6 @@ class DataScienceError(Exception):
         self.details = details or {}
 
 
-# Backwards compatibility alias
-MLOpsError = DataScienceError
 
 
 class ConfigurationError(DataScienceError):

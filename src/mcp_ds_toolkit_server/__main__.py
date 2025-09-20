@@ -14,7 +14,7 @@ Functions:
 Example:
     Run the server directly from command line::
 
-        python -m mcp_ds_toolkit --artifacts-dir ./my_artifacts
+        python -m mcp_ds_toolkit --mcp-dir ./my_mcp_data
 
     Or programmatically::
 
@@ -26,7 +26,6 @@ Example:
 
 import argparse
 import asyncio
-import logging
 import sys
 from pathlib import Path
 from typing import Optional
@@ -36,7 +35,7 @@ from mcp_ds_toolkit_server.utils.config import Settings
 from mcp_ds_toolkit_server.utils.logger import setup_logging
 
 
-async def run_server(settings: Optional[Settings] = None) -> None:
+async def run_server(settings: Optional[Settings] = None, mcp_dir: Optional[str] = None) -> None:
     """Run the MCP Data Science Toolkit server.
 
     Initializes and starts the server with proper logging configuration
@@ -46,6 +45,8 @@ async def run_server(settings: Optional[Settings] = None) -> None:
     Args:
         settings (Optional[Settings]): Configuration settings for the server.
             If None, creates a new Settings instance with default values.
+        mcp_dir (Optional[str]): Base directory for unified MCP data storage.
+            If provided, overrides default MCP base directory.
 
     Note:
         This function is the primary async entry point for server execution
@@ -57,22 +58,21 @@ async def run_server(settings: Optional[Settings] = None) -> None:
     # Set up logging
     setup_logging(settings)
 
-    # Run the server
+    # Run the server with unified directory structure
     await main()
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments.
+    """Parse command line arguments for unified MCP structure.
 
     Returns:
         Parsed arguments
     """
     parser = argparse.ArgumentParser(description="MCP Data Science Toolkit Server")
     parser.add_argument(
-        "--artifacts-dir",
+        "--mcp-dir",
         type=str,
-        default="./artifacts",
-        help="Base directory for ML artifacts storage (default: ./artifacts)",
+        help="Base directory for unified MCP data storage (default: ~/.mcp-ds-toolkit)",
     )
     parser.add_argument(
         "--log-level",
@@ -93,7 +93,7 @@ def cli_main() -> None:
 
     The function handles:
         - Command-line argument parsing
-        - Artifacts directory validation and setup
+        - Unified MCP directory setup
         - Asyncio event loop management
         - Graceful shutdown on Ctrl+C
         - Error logging and appropriate exit codes
@@ -105,32 +105,21 @@ def cli_main() -> None:
     # Parse command line arguments
     args = parse_args()
 
-    # Validate and setup artifacts directory
-    artifacts_dir = Path(args.artifacts_dir).resolve()
-    if not artifacts_dir.exists():
-        try:
-            artifacts_dir.mkdir(parents=True, exist_ok=True)
-            print(f"Created artifacts directory: {artifacts_dir}")
-        except Exception as e:
-            print(f"Error: Cannot create artifacts directory {artifacts_dir}: {e}")
-            sys.exit(1)
+    # Set environment variables for unified structure
+    if args.mcp_dir:
+        import os
+        os.environ["MCP_DS_TOOLKIT_DIR"] = str(Path(args.mcp_dir).resolve())
+        print(f"Using MCP directory: {args.mcp_dir}")
 
-    if not artifacts_dir.is_dir():
-        print(f"Error: Artifacts path is not a directory: {artifacts_dir}")
-        sys.exit(1)
-
-    # Create settings with artifacts directory
+    # Create settings with unified structure (PathManager handles directory creation)
     settings = Settings()
-    settings.data_dir = artifacts_dir / "data"
-    settings.models_dir = artifacts_dir / "models"
-    settings.experiments_dir = artifacts_dir / "experiments"
-    settings.workspace_path = artifacts_dir / "workspace"
     settings.log_level = args.log_level
 
-    logger = logging.getLogger(__name__)
+    from mcp_ds_toolkit_server.utils.logger import make_logger
+    logger = make_logger(__name__)
 
     try:
-        asyncio.run(run_server(settings))
+        asyncio.run(run_server(settings=settings))
     except KeyboardInterrupt:
         logger.info("Server stopped by user.")
         sys.exit(0)

@@ -29,7 +29,7 @@ Note:
     including local SQLite tracking, data management tools, and ML frameworks.
 """
 
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Optional
 import asyncio
 import os
 
@@ -210,28 +210,26 @@ class MCPDataScienceServer:
         self.shared_artifact_bridge = ArtifactBridge(default_persistence_config)
         logger.info(f"Initialized shared artifact bridge with mode: {default_persistence_config.mode.value}")
 
-        # Initialize data management tools with shared artifact bridge
+        # Initialize data management tools with unified config and shared artifact bridge
         self.data_tools = DataManagementTools(
-            workspace_path=settings.workspace_path,
+            config=settings,
             artifact_bridge=self.shared_artifact_bridge
         )
         self._register_data_tools()
 
-        # Initialize training tools with shared dataset registry and artifact bridge
+        # Initialize training tools with unified config and shared dataset registry
         logger.info(f"Passing datasets to TrainingTools - Registry ID: {id(self.data_tools.datasets)}, Keys: {list(self.data_tools.datasets.keys())}")
         self.training_tools = TrainingTools(
-            workspace_path=settings.workspace_path,
+            config=settings,
             datasets=self.data_tools.datasets,
             dataset_metadata=self.data_tools.dataset_metadata,
             artifact_bridge=self.shared_artifact_bridge
         )
         self._register_training_tools()
 
-        # Workflow tools removed - using individual tools only
-
-        # Initialize tracking tools with shared artifact bridge
+        # Initialize tracking tools with unified config and shared artifact bridge
         self.tracking_tools = TrackingTools(
-            workspace_path=settings.workspace_path,
+            config=settings,
             artifact_bridge=self.shared_artifact_bridge
         )
         self._register_tracking_tools()
@@ -346,6 +344,22 @@ async def list_prompts() -> list[types.Prompt]:
     """
     return [
         types.Prompt(
+            name="analyze_dataset",
+            description="Analyze an uploaded dataset using the MCP Data Science Toolkit",
+            arguments=[
+                types.PromptArgument(
+                    name="dataset_path",
+                    description="Path to the dataset file (CSV, JSON, Parquet, etc.)",
+                    required=True,
+                ),
+                types.PromptArgument(
+                    name="analysis_focus",
+                    description="What to focus on in the analysis (e.g., 'data quality', 'correlations', 'outliers')",
+                    required=False,
+                ),
+            ],
+        ),
+        types.Prompt(
             name="ml_workflow_guide",
             description="Guide for end-to-end ML workflow using the MCP Data Science Toolkit",
             arguments=[
@@ -378,6 +392,141 @@ async def list_prompts() -> list[types.Prompt]:
             ],
         ),
     ]
+
+
+@server.get_prompt()
+async def get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetPromptResult:
+    """Get a specific prompt with the provided arguments.
+
+    Handles dynamic prompt generation based on user-provided arguments.
+    Currently supports the 'analyze_dataset' prompt for uploaded files.
+
+    Args:
+        name (str): Name of the prompt to retrieve
+        arguments (dict[str, str] | None): Arguments to customize the prompt
+
+    Returns:
+        types.GetPromptResult: The generated prompt with instructions
+
+    Raises:
+        ValueError: If the prompt name is unknown or required arguments are missing
+    """
+    if name == "analyze_dataset":
+        if not arguments or "dataset_path" not in arguments:
+            raise ValueError("Missing required argument: dataset_path")
+
+        dataset_path = arguments["dataset_path"]
+        analysis_focus = arguments.get("analysis_focus", "comprehensive data analysis")
+
+        # Generate comprehensive analysis prompt
+        prompt_text = f"""I'll help you analyze the dataset at: {dataset_path}
+
+Focus area: {analysis_focus}
+
+Let me start by loading and exploring this dataset. I'll use the MCP Data Science Toolkit to:
+
+1. Load the dataset using the load_dataset tool
+2. Examine its structure, size, and basic statistics
+3. Check for data quality issues (missing values, outliers, etc.)
+4. Perform exploratory data analysis based on your focus area
+5. Provide insights and recommendations
+
+Let me begin by loading the dataset:"""
+
+        return types.GetPromptResult(
+            description=f"Dataset analysis for {dataset_path}",
+            messages=[
+                types.PromptMessage(
+                    role="user",
+                    content=types.TextContent(type="text", text=prompt_text),
+                )
+            ],
+        )
+
+    elif name == "ml_workflow_guide":
+        task_type = arguments.get("task_type", "general") if arguments else "general"
+        dataset_type = arguments.get("dataset_type", "tabular") if arguments else "tabular"
+
+        prompt_text = f"""I'll guide you through an end-to-end machine learning workflow for a {task_type} task with {dataset_type} data.
+
+Here's the recommended workflow using the MCP Data Science Toolkit:
+
+1. **Data Loading & Exploration**
+   - Load your dataset using the load_dataset tool
+   - Examine data structure, quality, and distributions
+
+2. **Data Preprocessing**
+   - Handle missing values and outliers
+   - Feature engineering and selection
+
+3. **Model Selection & Training**
+   - Choose appropriate algorithms for {task_type} tasks
+   - Train models with proper validation
+
+4. **Evaluation & Optimization**
+   - Assess model performance with relevant metrics
+   - Hyperparameter tuning and optimization
+
+5. **Model Deployment**
+   - Save and version your trained models
+   - Track experiments and results
+
+Let's start with your dataset. Do you have data ready to load?"""
+
+        return types.GetPromptResult(
+            description=f"ML workflow guide for {task_type} with {dataset_type} data",
+            messages=[
+                types.PromptMessage(
+                    role="user",
+                    content=types.TextContent(type="text", text=prompt_text),
+                )
+            ],
+        )
+
+    elif name == "model_comparison":
+        if not arguments or "models" not in arguments:
+            raise ValueError("Missing required argument: models")
+
+        models = arguments["models"]
+        metrics = arguments.get("metrics", "accuracy, precision, recall, f1-score")
+
+        prompt_text = f"""I'll help you compare these models: {models}
+
+Evaluation metrics to use: {metrics}
+
+Here's my systematic approach:
+
+1. **Training Multiple Models**
+   - Train each model: {models}
+   - Use consistent data splits and preprocessing
+
+2. **Performance Evaluation**
+   - Calculate metrics: {metrics}
+   - Cross-validation for robust estimates
+
+3. **Comparative Analysis**
+   - Performance comparison across metrics
+   - Statistical significance testing
+   - Training time and resource usage
+
+4. **Model Selection Recommendation**
+   - Best performing model for your use case
+   - Trade-offs analysis (performance vs. complexity)
+
+Let's start by loading your dataset and training these models."""
+
+        return types.GetPromptResult(
+            description=f"Model comparison: {models}",
+            messages=[
+                types.PromptMessage(
+                    role="user",
+                    content=types.TextContent(type="text", text=prompt_text),
+                )
+            ],
+        )
+
+    else:
+        raise ValueError(f"Unknown prompt: {name}")
 
 
 @server.list_tools()
@@ -483,9 +632,10 @@ async def read_resource(uri: str) -> str:
     if mcp_server is None:
         raise ValueError("Server not initialized")
 
-    # Handle file:// URIs for uploaded files
-    if uri.startswith("file://"):
-        return await _read_file_resource(uri)
+    # Handle simple filenames for data files
+    if not uri.startswith("ds-toolkit://"):
+        # Treat as simple filename in data directory
+        return _read_data_file(uri)
 
     # Handle ds-toolkit:// URIs through artifact bridge
     try:
@@ -506,158 +656,64 @@ async def read_resource(uri: str) -> str:
         raise ValueError(f"Error reading resource {uri}: {str(e)}")
 
 
-async def _read_file_resource(uri: str) -> str:
-    """Read a file:// resource with security validation.
+def _read_data_file(filename: str) -> str:
+    """Read a file from the data directory.
 
     Args:
-        uri: file:// URI to read
+        filename: Name of file in data directory
 
     Returns:
-        str: File content as string
+        str: File content
 
     Raises:
-        ValueError: If file path is invalid or access denied
+        ValueError: If file not found or access denied
     """
-    import os
     from pathlib import Path
-    from urllib.parse import urlparse
     import base64
 
+    # Resolve file path within data directory
+    file_path = settings.path_manager.data_dir / filename
+
+    # Security validation: ensure path stays within data directory
     try:
-        # Parse the file:// URI
-        parsed = urlparse(uri)
-        if parsed.scheme != "file":
-            raise ValueError(f"Invalid file URI scheme: {parsed.scheme}")
-
-        # Handle file path from URI - support both standard and Claude Desktop formats
-        file_path_str = parsed.path
-
-        # Handle Claude Desktop format: file://filename.csv (netloc contains filename, path is empty)
-        if not file_path_str and parsed.netloc:
-            file_path_str = parsed.netloc
-            logger.info(f"Using netloc as filename for Claude Desktop format: {file_path_str}")
-
-        logger.info(f"Searching for file: {file_path_str}")
-
-        # If path doesn't start with /, it's a relative path - search common locations
-        if not file_path_str.startswith('/'):
-            # Expand search locations for file uploads
-            potential_locations = [
-                # Artifacts directory first (where we expect uploaded files)
-                settings.data_dir / file_path_str,
-                settings.workspace_path / file_path_str,
-                Path.cwd() / file_path_str,  # Current directory
-                Path.home() / "Downloads" / file_path_str,  # Downloads folder
-                Path("/tmp") / file_path_str,  # Temp directory
-                Path("/var/tmp") / file_path_str,  # Alternative temp
-                Path.home() / "Desktop" / file_path_str,  # Desktop
-                Path.home() / "Documents" / file_path_str,  # Documents
-            ]
-
-            # Add environment-based locations
-            if os.getenv("TMPDIR"):
-                potential_locations.append(Path(os.getenv("TMPDIR")) / file_path_str)
-            if os.getenv("TEMP"):
-                potential_locations.append(Path(os.getenv("TEMP")) / file_path_str)
-
-            # macOS temporary items patterns
-            temp_patterns = [
-                Path("/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
-                Path("/private/var/folders").glob(f"*/T/TemporaryItems/*/{file_path_str}"),
-                Path("/var/folders").glob(f"*/*/*/{file_path_str}"),  # Broader search
-            ]
-
-            file_path = None
-            searched_locations = []
-
-            # Check direct locations first
-            for location in potential_locations:
-                searched_locations.append(f"{location} ({'exists' if location.exists() else 'not found'})")
-                if location.exists() and location.is_file():
-                    file_path = location
-                    logger.info(f"Found file at: {file_path}")
-
-                    # If file is outside artifacts directory, copy it to data dir
-                    if not str(file_path).startswith(str(settings.data_dir.parent)):
-                        try:
-                            settings.data_dir.mkdir(parents=True, exist_ok=True)
-                            destination = settings.data_dir / file_path.name
-                            if not destination.exists():
-                                import shutil
-                                shutil.copy2(file_path, destination)
-                                logger.info(f"Copied uploaded file to artifacts: {destination}")
-                                file_path = destination
-                        except Exception as e:
-                            logger.warning(f"Could not copy file to artifacts directory: {e}")
-                    break
-
-            # Check glob patterns if not found
-            if not file_path:
-                for pattern in temp_patterns:
-                    try:
-                        for glob_path in pattern:
-                            searched_locations.append(f"{glob_path} ({'exists' if glob_path.exists() else 'not found'})")
-                            if glob_path.exists() and glob_path.is_file():
-                                file_path = glob_path
-                                logger.info(f"Found file via glob at: {file_path}")
-
-                                # Copy to artifacts directory
-                                try:
-                                    settings.data_dir.mkdir(parents=True, exist_ok=True)
-                                    destination = settings.data_dir / file_path.name
-                                    if not destination.exists():
-                                        import shutil
-                                        shutil.copy2(file_path, destination)
-                                        logger.info(f"Copied uploaded file to artifacts: {destination}")
-                                        file_path = destination
-                                except Exception as e:
-                                    logger.warning(f"Could not copy file to artifacts directory: {e}")
-                                break
-                        if file_path:
-                            break
-                    except Exception as e:
-                        logger.debug(f"Glob pattern {pattern} failed: {e}")
-
-            if not file_path:
-                search_details = "\n".join([f"  - {loc}" for loc in searched_locations])
-                error_msg = f"File not found: {file_path_str}\n\nSearched locations:\n{search_details}\n\nWorking directory: {Path.cwd()}\nEnvironment TMPDIR: {os.getenv('TMPDIR', 'not set')}"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-        else:
-            file_path = Path(file_path_str)
-            logger.info(f"Using absolute path: {file_path}")
-
-        # Security validation
-        if not file_path.exists():
-            raise ValueError(f"File not found: {file_path}")
-
-        if not file_path.is_file():
-            raise ValueError(f"Path is not a file: {file_path}")
-
-        # Additional security: prevent access to system files
         resolved_path = file_path.resolve()
+        data_dir_resolved = settings.path_manager.data_dir.resolve()
 
-        # Block access to system directories
-        blocked_paths = ["/etc", "/sys", "/proc", "/dev", "/root"]
-        for blocked in blocked_paths:
-            if str(resolved_path).startswith(blocked):
-                raise ValueError(f"Access denied to system path: {resolved_path}")
-
-        # Read file content
-        try:
-            # Try reading as text first
-            with open(resolved_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return content
-        except UnicodeDecodeError:
-            # If binary file, return base64 encoded
-            with open(resolved_path, 'rb') as f:
-                binary_content = f.read()
-            return base64.b64encode(binary_content).decode('ascii')
+        # Check if resolved path is within data directory
+        if not str(resolved_path).startswith(str(data_dir_resolved)):
+            raise ValueError(f"Access denied: path traversal not allowed")
 
     except Exception as e:
-        logger.error(f"Error reading file resource {uri}: {e}")
-        raise ValueError(f"Failed to read file resource: {str(e)}")
+        raise ValueError(f"Invalid file path: {filename}")
+
+    # Check if file exists
+    if not file_path.exists():
+        # Ensure data directory exists for clear error message
+        settings.path_manager.data_dir.mkdir(parents=True, exist_ok=True)
+        raise ValueError(
+            f"File '{filename}' not found.\n"
+            f"Please save your file to the data directory: {settings.path_manager.data_dir}"
+        )
+
+    if not file_path.is_file():
+        raise ValueError(f"'{filename}' is not a file")
+
+    # Read file content
+    try:
+        # Try reading as text first
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        logger.info(f"Read data file: {filename}")
+        return content
+    except UnicodeDecodeError:
+        # Handle binary files with base64 encoding
+        try:
+            with open(file_path, 'rb') as f:
+                binary_content = f.read()
+            logger.info(f"Read binary data file: {filename}")
+            return base64.b64encode(binary_content).decode('ascii')
+        except Exception as e:
+            raise ValueError(f"Failed to read file '{filename}': {str(e)}")
 
 
 async def perform_startup_checks() -> None:
@@ -681,7 +737,7 @@ async def perform_startup_checks() -> None:
     # Check disk space
     import shutil
     try:
-        workspace_path = settings.workspace_path
+        workspace_path = settings.path_manager.workspace_dir
         total, used, free = shutil.disk_usage(workspace_path.parent)
         free_gb = free // (1024**3)
         if free_gb < 1:
@@ -722,7 +778,7 @@ async def main() -> None:
     Raises:
         Exception: If critical startup failures occur that prevent server operation
     """
-    global mcp_server
+    global mcp_server, settings
 
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 

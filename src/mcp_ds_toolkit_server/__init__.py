@@ -20,12 +20,11 @@ Key Features:
 Architecture:
     The toolkit is organized into focused modules:
 
-    - :mod:`mcp_ds_toolkit.data`: Data management and preprocessing capabilities
-    - :mod:`mcp_ds_toolkit.training`: Model training and evaluation functionality
-    - :mod:`mcp_ds_toolkit.tracking`: Experiment tracking and versioning
-    - :mod:`mcp_ds_toolkit.tools`: MCP tool integrations
-    - :mod:`mcp_ds_toolkit.workflows`: End-to-end workflow orchestration
-    - :mod:`mcp_ds_toolkit.utils`: Common utilities and configurations
+    - :mod:`mcp_ds_toolkit_server.data`: Data management and preprocessing capabilities
+    - :mod:`mcp_ds_toolkit_server.training`: Model training and evaluation functionality
+    - :mod:`mcp_ds_toolkit_server.tracking`: Experiment tracking and versioning
+    - :mod:`mcp_ds_toolkit_server.tools`: MCP tool integrations
+    - :mod:`mcp_ds_toolkit_server.utils`: Common utilities and configurations
 
 Example:
     Basic usage of the toolkit::
@@ -61,19 +60,16 @@ from mcp_ds_toolkit_server.data import (
     CrossValidationMethod,
     CustomTransformer,
     DataCleaner,
-    DataDriftMetric,
     DataFormat,
     DataProfile,
     DataProfiler,
     DataQualityReport,
     DatasetInfo,
     DatasetLoader,
-    DatasetVersion,
     DataSplitter,
     DataType,
     DataValidator,
     DistributionType,
-    DriftReport,
     EncodingMethod,
     FeatureImportanceAnalysis,
     ImputationMethod,
@@ -86,13 +82,10 @@ from mcp_ds_toolkit_server.data import (
     OutlierDetector,
     OutlierMethod,
     OutlierReport,
-    PipelineConfig,
     PreprocessingConfig,
     PreprocessingPipeline,
     PreprocessingReport,
     ProfileType,
-    RemoteConfig,
-    RemoteStorageType,
     ScalingMethod,
     SelectionMethod,
     SplitMetrics,
@@ -102,8 +95,6 @@ from mcp_ds_toolkit_server.data import (
     ValidationIssue,
     ValidationRule,
     ValidationSeverity,
-    VersioningConfig,
-    VersioningStrategy,
 )
 from mcp_ds_toolkit_server.data.cleaning import (
     analyze_missing_data,
@@ -117,7 +108,6 @@ from mcp_ds_toolkit_server.data.splitting import (
 )
 
 # Utility functions
-# Versioning functionality removed - using local storage only
 
 __version__ = "0.1.0"
 
@@ -178,16 +168,6 @@ __all__ = [
     "split_dataset",
     "create_time_series_splits",
     "create_stratified_splits",
-    # Data versioning
-    "RemoteStorageType",
-    "VersioningStrategy",
-    "DataDriftMetric",
-    "RemoteConfig",
-    "VersioningConfig",
-    "DatasetVersion",
-    "DriftReport",
-    "PipelineConfig",
-# Versioning functions removed - using local storage only
     # Exceptions
     "FeatureNotImplementedError",
 ]

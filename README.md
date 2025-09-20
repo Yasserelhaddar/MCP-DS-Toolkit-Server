@@ -12,7 +12,7 @@ MCP DS Toolkit Server enables AI assistants to perform complete data science wor
 
 ### **Key Capabilities**
 
-✅ **31 DS Tools** - Complete DS workflow from data loading to model evaluation
+✅ **29 DS Tools** - Complete DS workflow from data loading to model evaluation
 ✅ **Natural Language Interface** - Just describe what you want in plain English
 ✅ **Zero Configuration** - Works immediately after installation
 ✅ **Local SQLite Tracking** - No external databases or cloud services needed
@@ -35,7 +35,7 @@ MCP DS Toolkit Server enables AI assistants to perform complete data science wor
 
 ### 📊 **Complete Tool Suite**
 - **Data Management**: Loading, validation, profiling, cleaning, preprocessing
-- **Model Training**: 20+ algorithms from scikit-learn with automatic hyperparameter tuning
+- **Model Training**: 14+ algorithms from scikit-learn with automatic hyperparameter tuning
 - **Experiment Tracking**: SQLite-based tracking with full experiment lineage
 - **Performance Analysis**: Learning curves, feature importance, and model comparisons
 
@@ -176,7 +176,7 @@ uv sync
 
 ## 🛠️ **Complete Tool Reference**
 
-### 📊 **Data Management Tools (15 tools)**
+### 📊 **Data Management Tools (13 tools)**
 
 | Tool | Description | Example Usage |
 |------|-------------|---------------|
@@ -192,7 +192,6 @@ uv sync
 | `batch_process_datasets` | Process multiple datasets at once | "Apply same preprocessing to all datasets" |
 | `sample_dataset` | Create dataset samples | "Sample 1000 rows from the dataset" |
 | `export_dataset` | Export to various formats | "Export cleaned data to CSV" |
-| `generate_learning_curve` | Analyze model learning behavior | "Generate learning curves for the model" |
 | `remove_dataset` | Remove dataset from memory | "Remove the temporary dataset" |
 | `clear_all_data` | Clear all loaded data | "Clear all datasets from memory" |
 
@@ -200,7 +199,7 @@ uv sync
 
 | Tool | Description | Example Usage |
 |------|-------------|---------------|
-| `train_model` | Train ML models with 20+ algorithms | "Train a random forest classifier" |
+| `train_model` | Train ML models with 14+ algorithms | "Train a random forest classifier" |
 | `evaluate_model` | Evaluate model performance | "Evaluate the model on test data" |
 | `compare_models` | Compare multiple models | "Compare RF, SVM, and XGBoost" |
 | `tune_hyperparameters` | Optimize model parameters | "Tune hyperparameters using grid search" |

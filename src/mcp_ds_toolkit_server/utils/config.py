@@ -1,4 +1,4 @@
-"""Configuration management for the MCP MLOps server."""
+"""Configuration management for the MCP DS Toolkit server."""
 
 import logging
 import os
@@ -8,17 +8,101 @@ from typing import Optional
 
 from mcp_ds_toolkit_server.exceptions import ConfigurationError
 from mcp_ds_toolkit_server.utils.common import ensure_directory
+from mcp_ds_toolkit_server.utils.logger import make_logger
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
+
+
+class PathManager:
+    """Unified path management for all MCP DS Toolkit data."""
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        """Initialize PathManager with unified directory structure.
+
+        Args:
+            base_dir: Base directory for all MCP data. Defaults to ~/.mcp-ds-toolkit
+        """
+        self.base_dir = base_dir or Path.home() / ".mcp-ds-toolkit"
+
+        # Core directories
+        self.data_dir = self.base_dir / "data"
+        self.uploads_dir = self.base_dir / "uploads"
+        self.config_dir = self.base_dir / "config"
+
+        # ML/AI directories
+        self.models_dir = self.base_dir / "models"
+        self.experiments_dir = self.base_dir / "experiments"
+        self.workspace_dir = self.base_dir / "workspace"
+        self.artifacts_dir = self.base_dir / "artifacts"
+
+        # Cache directories (consolidated)
+        self.cache_dir = self.base_dir / "cache"
+        self.huggingface_cache = self.cache_dir / "huggingface"
+        self.matplotlib_cache = self.cache_dir / "matplotlib"
+        self.torch_cache = self.cache_dir / "torch"
+        self.jupyter_cache = self.cache_dir / "jupyter"
+        self.memory_cache = self.cache_dir / "memory"
+
+        # Database files
+        self.experiments_db = self.base_dir / "experiments.db"
+
+        logger.info(f"PathManager initialized with base directory: {self.base_dir}")
+
+    def ensure_all_directories(self) -> None:
+        """Create all necessary directories in the unified structure."""
+        directories = [
+            self.data_dir,
+            self.uploads_dir,
+            self.config_dir,
+            self.models_dir,
+            self.experiments_dir,
+            self.workspace_dir,
+            self.artifacts_dir,
+            self.cache_dir,
+            self.huggingface_cache,
+            self.matplotlib_cache,
+            self.torch_cache,
+            self.jupyter_cache,
+            self.memory_cache,
+        ]
+
+        created_dirs = []
+        for directory in directories:
+            try:
+                created_dir = ensure_directory(directory)
+                created_dirs.append(str(created_dir))
+            except Exception as e:
+                logger.warning(f"Failed to create directory {directory}: {e}")
+
+        logger.debug(f"Ensured unified directories: {created_dirs}")
+
+    def get_cache_env_vars(self) -> dict:
+        """Get environment variables for cache redirection."""
+        return {
+            "HUGGINGFACE_HUB_CACHE": str(self.huggingface_cache),
+            "TRANSFORMERS_CACHE": str(self.huggingface_cache),
+            "HF_HOME": str(self.huggingface_cache),
+            "TORCH_HOME": str(self.torch_cache),
+            "MPLCONFIGDIR": str(self.matplotlib_cache),
+            "JUPYTER_DATA_DIR": str(self.jupyter_cache),
+        }
+
+    def apply_cache_redirection(self) -> None:
+        """Apply cache redirection environment variables."""
+        env_vars = self.get_cache_env_vars()
+        for key, value in env_vars.items():
+            os.environ[key] = value
+            logger.debug(f"Set {key}={value}")
+
 
 
 @dataclass
 class Settings:
-    """Configuration settings for the MCP MLOps server."""
+    """Configuration settings for the MCP DS Toolkit server."""
 
     # Application settings
     app_name: str = field(default="mcp-ds-toolkit-server")
-    app_version: str = field(default="0.2.0")
+    app_version: str = field(default="0.2.9")
     app_description: str = field(
         default="MCP DS Toolkit Server - A comprehensive DS toolkit with natural language interface"
     )
@@ -29,33 +113,10 @@ class Settings:
     )
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
-    # Data settings - using artifacts directory structure resolved from current directory
-    data_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("DATA_DIR", "artifacts/data")).resolve()
-    )
-    models_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("MODELS_DIR", "artifacts/models")).resolve()
-    )
-    experiments_dir: Path = field(
-        default_factory=lambda: Path(
-            os.getenv("EXPERIMENTS_DIR", "artifacts/experiments")
-        ).resolve()
-    )
-    workspace_path: Path = field(
-        default_factory=lambda: Path(os.getenv("WORKSPACE_PATH", "artifacts/workspace")).resolve()
-    )
+    # Unified path management
+    path_manager: PathManager = field(init=False)
 
 
-    # AWS Settings for S3 storage
-    aws_access_key_id: Optional[str] = field(
-        default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID")
-    )
-    aws_secret_access_key: Optional[str] = field(
-        default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY")
-    )
-    aws_default_region: str = field(
-        default_factory=lambda: os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-    )
 
 
     # Resource limits
@@ -76,33 +137,25 @@ class Settings:
     default_random_state: int = field(
         default_factory=lambda: int(os.getenv("DEFAULT_RANDOM_STATE", "42"))
     )
-    default_cv_folds: int = field(
-        default_factory=lambda: int(os.getenv("DEFAULT_CV_FOLDS", "5"))
-    )
 
-    # Deployment settings
-    deployment_host: str = field(
-        default_factory=lambda: os.getenv("DEPLOYMENT_HOST", "127.0.0.1")
-    )
-    deployment_port: int = field(
-        default_factory=lambda: int(os.getenv("DEPLOYMENT_PORT", "8000"))
-    )
 
     def __post_init__(self):
-        """Initialize and validate configuration."""
-        # Convert string paths to Path objects if needed
-        if isinstance(self.data_dir, str):
-            self.data_dir = Path(self.data_dir)
-        if isinstance(self.models_dir, str):
-            self.models_dir = Path(self.models_dir)
-        if isinstance(self.experiments_dir, str):
-            self.experiments_dir = Path(self.experiments_dir)
-        if isinstance(self.workspace_path, str):
-            self.workspace_path = Path(self.workspace_path)
+        """Initialize unified configuration with PathManager."""
+        # Initialize PathManager with optional base directory override
+        base_dir = os.getenv("MCP_DS_TOOLKIT_DIR")
+        self.path_manager = PathManager(Path(base_dir) if base_dir else None)
+
+        # Apply cache redirection immediately
+        self.path_manager.apply_cache_redirection()
+
+        # Create unified directory structure
+        try:
+            self.path_manager.ensure_all_directories()
+        except Exception as e:
+            logger.warning(f"Failed to create some unified directories: {e}")
 
         self._validate_config()
-        # Don't create directories during initialization
-        # They will be created on-demand when needed
+        logger.info(f"Settings initialized with unified structure at: {self.path_manager.base_dir}")
 
     def _validate_config(self) -> None:
         """Validate configuration values."""
@@ -116,51 +169,11 @@ class Settings:
                 f"default_test_size must be between 0 and 1, got {self.default_test_size}"
             )
 
-        if self.deployment_port <= 0 or self.deployment_port > 65535:
-            raise ConfigurationError(
-                f"deployment_port must be between 1 and 65535, got {self.deployment_port}"
-            )
-
     def ensure_directories(self) -> None:
-        """Ensure all required directories exist, using fallback to temp on failure."""
-        directories = [
-            ("data_dir", self.data_dir),
-            ("models_dir", self.models_dir),
-            ("experiments_dir", self.experiments_dir),
-            ("workspace_path", self.workspace_path),
-        ]
+        """Ensure all required directories exist using PathManager."""
+        try:
+            self.path_manager.ensure_all_directories()
+        except Exception as e:
+            logger.warning(f"Failed to ensure unified directories: {e}")
 
-        created_dirs = []
-        for name, directory in directories:
-            try:
-                ensured_dir = ensure_directory(directory, fallback_to_temp=True)
-                # Update the attribute if it was changed due to fallback
-                if ensured_dir != directory:
-                    setattr(self, name, ensured_dir)
-                created_dirs.append(str(ensured_dir))
-            except Exception as e:
-                logger.warning(f"Failed to create directory {directory}: {e}")
-
-
-        logger.debug(f"Ensured directories: {created_dirs}")
-
-    def get_data_path(self, filename: str) -> Path:
-        """Get path for a data file, ensuring directory exists."""
-        data_dir = ensure_directory(self.data_dir, fallback_to_temp=True)
-        return data_dir / filename
-
-    def get_model_path(self, filename: str) -> Path:
-        """Get path for a model file, ensuring directory exists."""
-        models_dir = ensure_directory(self.models_dir, fallback_to_temp=True)
-        return models_dir / filename
-
-    def get_experiment_path(self, filename: str) -> Path:
-        """Get path for an experiment file, ensuring directory exists."""
-        experiments_dir = ensure_directory(self.experiments_dir, fallback_to_temp=True)
-        return experiments_dir / filename
-
-    def get_workspace_path(self, filename: str) -> Path:
-        """Get path for a workspace file, ensuring directory exists."""
-        workspace_dir = ensure_directory(self.workspace_path, fallback_to_temp=True)
-        return workspace_dir / filename
 

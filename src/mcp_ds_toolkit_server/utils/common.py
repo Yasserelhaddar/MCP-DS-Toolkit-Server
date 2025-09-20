@@ -1,5 +1,5 @@
 """
-Common utilities and shared functionality for the MCP MLOps server.
+Common utilities and shared functionality for the MCP Data Science Toolkit server.
 
 This module provides reusable utilities for directory management, error handling,
 and configuration validation used across the codebase.
@@ -11,7 +11,9 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Union
 
-logger = logging.getLogger(__name__)
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
+logger = make_logger(__name__)
 
 
 def ensure_directory(
@@ -45,7 +47,7 @@ def ensure_directory(
 
     except (OSError, PermissionError) as e:
         if fallback_to_temp:
-            temp_base = Path(tempfile.gettempdir()) / "mcp-mlops-server"
+            temp_base = Path(tempfile.gettempdir()) / "mcp-ds-toolkit-server"
             temp_base.mkdir(parents=True, exist_ok=True)
 
             # Create relative path structure in temp
@@ -61,80 +63,6 @@ def ensure_directory(
         else:
             raise OSError(f"Cannot create directory {path}: {e}")
 
-
-def is_writable(path: Union[str, Path]) -> bool:
-    """
-    Check if a directory is writable.
-
-    Args:
-        path: Directory path to check
-
-    Returns:
-        True if directory is writable, False otherwise
-    """
-    try:
-        path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        test_file = path / ".test_write"
-        test_file.touch()
-        test_file.unlink()
-        return True
-    except (OSError, PermissionError):
-        return False
-
-
-def get_project_base_dir() -> Path:
-    """
-    Get the project base directory, handling read-only environments.
-
-    Returns:
-        Path to use as base directory
-    """
-    try:
-        project_root = Path(__file__).parent.parent.parent
-        if is_writable(project_root):
-            return project_root
-        else:
-            temp_base = Path(tempfile.gettempdir()) / "mcp-mlops-server"
-            return ensure_directory(temp_base)
-    except Exception:
-        temp_base = Path(tempfile.gettempdir()) / "mcp-mlops-server"
-        return ensure_directory(temp_base)
-
-
-class DirectoryManager:
-    """Manages directory creation and validation for the project."""
-
-    def __init__(self, base_dir: Optional[Path] = None):
-        self.base_dir = base_dir or get_project_base_dir()
-
-    def get_data_dir(self, subdir: Optional[str] = None) -> Path:
-        """Get data directory path."""
-        path = self.base_dir / "data"
-        if subdir:
-            path = path / subdir
-        return ensure_directory(path)
-
-    def get_models_dir(self, subdir: Optional[str] = None) -> Path:
-        """Get models directory path."""
-        path = self.base_dir / "models"
-        if subdir:
-            path = path / subdir
-        return ensure_directory(path)
-
-    def get_experiments_dir(self, subdir: Optional[str] = None) -> Path:
-        """Get experiments directory path."""
-        path = self.base_dir / "experiments"
-        if subdir:
-            path = path / subdir
-        return ensure_directory(path)
-
-    def get_workspace_dir(self, subdir: Optional[str] = None) -> Path:
-        """Get workspace directory path."""
-        path = self.base_dir / "workspace"
-        if subdir:
-            path = path / subdir
-        return ensure_directory(path)
 
 
 
@@ -165,27 +93,3 @@ def validate_path(path: Union[str, Path], must_exist: bool = False) -> Path:
         raise ValueError(f"Invalid path: {e}")
 
 
-def safe_file_write(
-    content: str, filepath: Union[str, Path], mode: str = "w", backup: bool = True
-) -> Path:
-    """
-    Safely write content to a file with optional backup.
-
-    Args:
-        content: Content to write
-        filepath: Target file path
-        mode: File mode for writing
-        backup: Whether to create a backup if file exists
-
-    Returns:
-        Path to the written file
-    """
-    filepath = Path(filepath)
-    ensure_directory(filepath.parent)
-
-    if backup and filepath.exists():
-        backup_path = filepath.with_suffix(filepath.suffix + ".backup")
-        filepath.rename(backup_path)
-
-    filepath.write_text(content, encoding="utf-8")
-    return filepath

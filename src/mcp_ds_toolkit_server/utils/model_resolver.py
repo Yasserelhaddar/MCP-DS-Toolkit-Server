@@ -1,5 +1,5 @@
 """
-Unified Model Resolution System for MCP MLOps Server
+Unified Model Resolution System for MCP Data Science Toolkit Server
 
 This module provides intelligent model discovery and resolution across
 different persistence modes, enabling deployment tools to seamlessly 
@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 from sklearn.base import BaseEstimator
 
 from mcp_ds_toolkit_server.utils.persistence import ArtifactBridge, PersistenceMode
+from mcp_ds_toolkit_server.utils.logger import make_logger
 from mcp_ds_toolkit_server.exceptions import DataError
 
 # Local storage only - no external registry dependencies
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 @dataclass
@@ -53,7 +54,7 @@ class UnifiedModelResolver:
             artifact_bridge: Artifact bridge for persistence operations
         """
         self.artifact_bridge = artifact_bridge
-        self.logger = logging.getLogger(__name__)
+        self.logger = make_logger(__name__)
     
     def resolve_model(
         self, 

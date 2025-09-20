@@ -1,5 +1,5 @@
 """
-Core persistence and artifact management utilities for the MCP MLOps server.
+Core persistence and artifact management utilities for the MCP Data Science Toolkit server.
 
 This module provides the fundamental persistence architecture including:
 - Persistence mode definitions and configuration
@@ -9,7 +9,7 @@ This module provides the fundamental persistence architecture including:
 
 The persistence system supports three modes:
 1. MEMORY_ONLY: All artifacts stored in memory (default, MCP-friendly)
-2. FILESYSTEM: Traditional filesystem storage (MLOps standard)
+2. FILESYSTEM: Traditional filesystem storage (Data Science standard)
 3. HYBRID: Both memory and filesystem storage (best of both worlds)
 """
 
@@ -29,14 +29,17 @@ import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator
 
-logger = logging.getLogger(__name__)
+from mcp_ds_toolkit_server.utils.common import ensure_directory
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
+logger = make_logger(__name__)
 
 
 class PersistenceMode(Enum):
     """Enumeration of persistence modes for artifacts and data."""
     
     MEMORY_ONLY = "memory_only"    # Store everything in memory (default, MCP-friendly)
-    FILESYSTEM = "filesystem"      # Store everything on filesystem (traditional MLOps)
+    FILESYSTEM = "filesystem"      # Store everything on filesystem (traditional Data Science)
     HYBRID = "hybrid"              # Store in both memory and filesystem
 
 
@@ -50,7 +53,7 @@ class ArtifactEncoding(Enum):
 
 @dataclass
 class PersistenceConfig:
-    """Configuration for persistence behavior across the MCP MLOps server.
+    """Configuration for persistence behavior across the MCP Data Science Toolkit server.
     
     This class centralizes all persistence-related configuration, allowing
     fine-grained control over where and how artifacts are stored.
@@ -109,7 +112,6 @@ class ArtifactSerializer:
             model_bytes = pickle.dumps(model)
             return base64.b64encode(model_bytes).decode('utf-8')
         elif encoding == ArtifactEncoding.BASE64:
-            # For backwards compatibility
             model_bytes = pickle.dumps(model)
             return base64.b64encode(model_bytes).decode('utf-8')
         else:
@@ -298,26 +300,26 @@ class ArtifactBridge:
                     settings = Settings()
                     
                     if artifact_type == "model":
-                        workspace_artifacts_dir = settings.models_dir
+                        workspace_artifacts_dir = settings.path_manager.models_dir
                         filesystem_path = workspace_artifacts_dir / f"{key}_model.pkl"
                     elif artifact_type == "dataset":
-                        workspace_artifacts_dir = settings.data_dir
+                        workspace_artifacts_dir = settings.path_manager.data_dir
                         filesystem_path = workspace_artifacts_dir / f"{key}_dataset.csv"
                     elif artifact_type == "metrics":
-                        workspace_artifacts_dir = settings.experiments_dir / "metrics"
+                        workspace_artifacts_dir = settings.path_manager.experiments_dir / "metrics"
                         filesystem_path = workspace_artifacts_dir / f"{key}_metrics.json"
                     else:
-                        workspace_artifacts_dir = settings.workspace_path
+                        workspace_artifacts_dir = settings.path_manager.workspace_dir
                         filesystem_path = workspace_artifacts_dir / f"{key}.pkl"
                     
                     # Ensure directory exists
-                    workspace_artifacts_dir.mkdir(parents=True, exist_ok=True)
+                    workspace_artifacts_dir = ensure_directory(workspace_artifacts_dir)
                     
                 except Exception as e:
                     # Fallback to temp directory if config fails
                     logger.warning(f"Failed to use project paths, falling back to temp: {e}")
-                    workspace_artifacts_dir = Path(tempfile.gettempdir()) / "mcp_mlops_artifacts"
-                    workspace_artifacts_dir.mkdir(exist_ok=True)
+                    workspace_artifacts_dir = Path(tempfile.gettempdir()) / "mcp_ds_toolkit_artifacts"
+                    workspace_artifacts_dir = ensure_directory(workspace_artifacts_dir)
                     
                     if artifact_type == "model":
                         filesystem_path = workspace_artifacts_dir / f"{key}_model.pkl"
@@ -329,7 +331,7 @@ class ArtifactBridge:
                         filesystem_path = workspace_artifacts_dir / f"{key}.pkl"
             # Save to filesystem
             try:
-                filesystem_path.parent.mkdir(parents=True, exist_ok=True)
+                ensure_directory(filesystem_path.parent)
                 
                 if artifact_type == "model":
                     with open(filesystem_path, "wb") as f:
@@ -430,8 +432,7 @@ class ArtifactBridge:
         Returns:
             Export manifest with details of exported artifacts
         """
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = ensure_directory(Path(output_dir))
         
         manifest = {
             "export_timestamp": datetime.now().isoformat(),

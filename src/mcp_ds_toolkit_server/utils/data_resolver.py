@@ -1,5 +1,5 @@
 """
-Unified Data Resolution System for MCP MLOps Server
+Unified Data Resolution System for MCP Data Science Toolkit Server
 
 This module provides intelligent data discovery and resolution across
 different persistence modes, enabling tools to seamlessly access data
@@ -14,12 +14,16 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 import pandas as pd
 
 from mcp_ds_toolkit_server.utils.persistence import ArtifactBridge, PersistenceMode
-from mcp_ds_toolkit_server.data import DatasetLoader
+from mcp_ds_toolkit_server.utils.logger import make_logger
 from mcp_ds_toolkit_server.exceptions import DataError
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from mcp_ds_toolkit_server.data.loader import DatasetLoader
 
 # Local storage only - no external versioning dependencies
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 
 @dataclass
@@ -48,7 +52,7 @@ class UnifiedDataResolver:
         self,
         memory_registry: Dict[str, pd.DataFrame],
         artifact_bridge: ArtifactBridge,
-        data_loader: Optional[DatasetLoader] = None
+        data_loader: Optional["DatasetLoader"] = None
     ):
         """Initialize the unified data resolver.
 
@@ -59,8 +63,13 @@ class UnifiedDataResolver:
         """
         self.memory_registry = memory_registry
         self.artifact_bridge = artifact_bridge
-        self.data_loader = data_loader or DatasetLoader()
-        self.logger = logging.getLogger(__name__)
+        if data_loader is None:
+            # Lazy import to avoid circular dependencies
+            from mcp_ds_toolkit_server.data.loader import DatasetLoader
+            self.data_loader = DatasetLoader()
+        else:
+            self.data_loader = data_loader
+        self.logger = make_logger(__name__)
     
     def resolve_data(
         self, 
@@ -286,7 +295,7 @@ def resolve_dataset_smart(
     dataset_path: Optional[str] = None,
     memory_registry: Optional[Dict[str, pd.DataFrame]] = None,
     artifact_bridge: Optional[ArtifactBridge] = None,
-    data_loader: Optional[DatasetLoader] = None
+    data_loader: Optional["DatasetLoader"] = None
 ) -> Tuple[pd.DataFrame, DataReference]:
     """
     Smart dataset resolution with automatic fallback.

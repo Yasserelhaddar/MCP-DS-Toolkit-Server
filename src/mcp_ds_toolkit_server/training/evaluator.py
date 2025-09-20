@@ -35,6 +35,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import cross_validate, learning_curve, validation_curve
 
 from mcp_ds_toolkit_server.exceptions import EvaluationError
+from mcp_ds_toolkit_server.utils.common import ensure_directory
 from mcp_ds_toolkit_server.utils.config import Settings
 from mcp_ds_toolkit_server.utils.logger import make_logger
 
@@ -103,7 +104,7 @@ class ComparisonResults:
     summary_table: Optional[pd.DataFrame] = None
 
 
-class ModelEvaluator:
+class TrainedModelEvaluator:
     """Comprehensive model evaluation and comparison."""
 
     # Classification metrics
@@ -257,7 +258,7 @@ class ModelEvaluator:
             EvaluationError: If comparison fails.
         """
         config = config or EvaluationConfig()
-        output_dir = output_dir or self.settings.experiments_dir
+        output_dir = output_dir or self.settings.path_manager.experiments_dir
 
         try:
             # Evaluate each model
@@ -645,7 +646,7 @@ class ModelEvaluator:
     ) -> None:
         """Save comparison results to files."""
         output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = ensure_directory(output_dir)
 
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 

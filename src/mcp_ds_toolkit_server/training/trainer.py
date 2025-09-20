@@ -98,24 +98,14 @@ class TrainingConfig:
     enable_cross_validation: bool = True
     scoring_metrics: List[str] = field(default_factory=lambda: ["accuracy", "f1_macro"])
 
+    # Output settings
+    save_model: bool = True
+    save_metrics: bool = True
+    save_predictions: bool = False
+
     # Persistence settings - replaces individual save_* flags
     persistence: PersistenceConfig = field(default_factory=lambda: create_default_persistence_config("memory_only"))
     
-    # Legacy compatibility methods
-    @property
-    def save_model(self) -> bool:
-        """Legacy compatibility for save_model flag."""
-        return self.persistence.should_save_to_filesystem() or self.persistence.should_store_in_memory()
-    
-    @property
-    def save_predictions(self) -> bool:
-        """Legacy compatibility for save_predictions flag."""
-        return self.persistence.should_save_to_filesystem() or self.persistence.should_store_in_memory()
-    
-    @property
-    def save_metrics(self) -> bool:
-        """Legacy compatibility for save_metrics flag."""
-        return self.persistence.should_save_to_filesystem() or self.persistence.should_store_in_memory()
 
 
 @dataclass
@@ -149,13 +139,7 @@ class TrainingResults:
     target_name: str = ""
     training_time: float = 0.0
 
-    # Legacy filesystem paths (maintained for compatibility)
-    model_path: Optional[Path] = None
-    metrics_path: Optional[Path] = None
-    predictions_path: Optional[Path] = None
-    
     # Preprocessor artifacts
-    preprocessor_path: Optional[Path] = None
     preprocessing_config: Optional[Dict] = None
     
     # New persistence-based artifact storage
@@ -262,7 +246,7 @@ class ModelTrainer:
             ValidationError: If input validation fails.
         """
         config = config or TrainingConfig()
-        output_dir = output_dir or self.settings.models_dir
+        output_dir = output_dir or self.settings.path_manager.models_dir
 
         try:
             # Validate inputs
@@ -619,8 +603,7 @@ class ModelTrainer:
     ) -> None:
         """Save training outputs using the new persistence system.
         
-        This method replaces the legacy _save_outputs method and uses the
-        ArtifactBridge for unified persistence management.
+        Uses the ArtifactBridge for unified persistence management.
         """
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
         base_name = f"{results.algorithm}_{timestamp}"
@@ -644,9 +627,6 @@ class ModelTrainer:
             results.model_artifact_key = model_key
             results.artifact_storage["model"] = model_storage
             
-            # Maintain legacy compatibility
-            if "filesystem_reference" in model_storage:
-                results.model_path = Path(model_storage["filesystem_reference"].replace("file://", ""))
             
             self.logger.info(f"Model stored with key: {model_key}")
 
@@ -678,9 +658,6 @@ class ModelTrainer:
             results.metrics_artifact_key = metrics_key
             results.artifact_storage["metrics"] = metrics_storage
             
-            # Maintain legacy compatibility
-            if "filesystem_reference" in metrics_storage:
-                results.metrics_path = Path(metrics_storage["filesystem_reference"].replace("file://", ""))
             
             self.logger.info(f"Metrics stored with key: {metrics_key}")
 
@@ -704,31 +681,9 @@ class ModelTrainer:
             results.predictions_artifact_key = predictions_key
             results.artifact_storage["predictions"] = predictions_storage
             
-            # Maintain legacy compatibility
-            if "filesystem_reference" in predictions_storage:
-                results.predictions_path = Path(predictions_storage["filesystem_reference"].replace("file://", ""))
                 
             self.logger.info(f"Predictions stored with key: {predictions_key}")
 
-    def _save_outputs(
-        self, results: TrainingResults, config: TrainingConfig, output_dir: Path
-    ) -> None:
-        """Legacy save outputs method for backward compatibility.
-        
-        This method is deprecated and will be removed in a future version.
-        Use _save_outputs_with_persistence instead.
-        """
-        self.logger.warning("Using deprecated _save_outputs method. Please update to use _save_outputs_with_persistence.")
-        
-        # Convert legacy config to persistence config and delegate
-        legacy_persistence = create_default_persistence_config("filesystem")
-        old_persistence = config.persistence
-        config.persistence = legacy_persistence
-        
-        try:
-            self._save_outputs_with_persistence(results, config, output_dir)
-        finally:
-            config.persistence = old_persistence
 
     def get_available_algorithms(self, model_type: str = "all") -> Dict[str, List[str]]:
         """Get list of available algorithms.

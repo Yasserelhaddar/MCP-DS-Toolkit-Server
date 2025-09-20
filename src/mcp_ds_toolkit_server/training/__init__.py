@@ -12,7 +12,7 @@ from mcp_ds_toolkit_server.training.evaluator import (
     ComparisonResults,
     EvaluationConfig,
     ModelEvaluation,
-    ModelEvaluator,
+    TrainedModelEvaluator,
 )
 from mcp_ds_toolkit_server.training.trainer import ModelTrainer, TrainingConfig, TrainingResults
 
@@ -20,7 +20,7 @@ __all__ = [
     "ModelTrainer",
     "TrainingConfig",
     "TrainingResults",
-    "ModelEvaluator",
+    "TrainedModelEvaluator",
     "EvaluationConfig",
     "ModelEvaluation",
     "ComparisonResults",

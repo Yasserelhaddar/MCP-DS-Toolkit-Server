@@ -20,25 +20,28 @@ from mcp.types import (
 from mcp_ds_toolkit_server.tools.base import BaseMCPTools
 from mcp_ds_toolkit_server.exceptions import TrackingError, ValidationError
 from mcp_ds_toolkit_server.tracking import get_tracker
-from mcp_ds_toolkit_server.utils.config import Settings
+from mcp_ds_toolkit_server.utils import Settings
 
 
 class TrackingTools(BaseMCPTools):
     """MCP tools for local experiment tracking operations."""
 
-    def __init__(self, workspace_path: Path, artifact_bridge=None):
+    def __init__(self, config, artifact_bridge=None):
         """Initialize tracking tools.
 
         Args:
-            workspace_path: Path to the workspace directory.
+            config: Settings object with unified path management.
             artifact_bridge: Shared artifact bridge for persistence operations.
         """
         # Use base class initialization to eliminate redundancy
         super().__init__(
-            workspace_path=workspace_path,
+            workspace_path=config.path_manager.workspace_dir,
             persistence_mode="memory_only",
             artifact_bridge=artifact_bridge
         )
+
+        # Store config for unified path access
+        self.config = config
 
     def _get_tracker(self):
         """Get the local experiment tracker."""

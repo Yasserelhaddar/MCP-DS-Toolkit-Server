@@ -25,62 +25,66 @@ from mcp_ds_toolkit_server.data import DatasetLoader
 from mcp_ds_toolkit_server.exceptions import DataError, TrainingError, ValidationError
 from mcp_ds_toolkit_server.training import (
     EvaluationConfig,
-    ModelEvaluator,
+    TrainedModelEvaluator,
     ModelTrainer,
     TrainingConfig,
 )
-from mcp_ds_toolkit_server.utils.config import Settings
-from mcp_ds_toolkit_server.utils.persistence import (
+from mcp_ds_toolkit_server.utils import (
+    Settings,
     ArtifactBridge,
     PersistenceConfig,
+    PersistenceMode,
     create_default_persistence_config,
+    UnifiedDataResolver,
+    UnifiedModelResolver,
 )
 from mcp_ds_toolkit_server.tracking import get_tracker
-from mcp_ds_toolkit_server.utils.data_resolver import UnifiedDataResolver
-from mcp_ds_toolkit_server.utils.model_resolver import UnifiedModelResolver
 
 
 class TrainingTools(BaseMCPTools):
     """MCP tools for model training operations."""
 
-    def __init__(self, workspace_path: Path, datasets=None, dataset_metadata=None, artifact_bridge=None):
+    def __init__(self, config, datasets=None, dataset_metadata=None, artifact_bridge=None):
         """Initialize training tools.
 
         Args:
-            workspace_path: Path to the workspace directory.
+            config: Settings object with unified path management.
             datasets: Shared in-memory datasets registry.
             dataset_metadata: Shared dataset metadata registry.
             artifact_bridge: Artifact bridge for persistence operations.
         """
         # Use base class initialization to eliminate redundancy
         super().__init__(
-            workspace_path=workspace_path,
-            persistence_mode="memory_only", 
+            workspace_path=config.path_manager.workspace_dir,
+            persistence_mode="memory_only",
             artifact_bridge=artifact_bridge
         )
-        
+
+        # Store config for unified path access
+        self.config = config
+
         # Tool-specific initialization
         self.datasets = datasets if datasets is not None else {}
         self.dataset_metadata = dataset_metadata if dataset_metadata is not None else {}
-            
+
         self.logger.info(f"TrainingTools initialized - Registry ID: {id(self.datasets)}, Keys: {list(self.datasets.keys())}")
-        
-        # Initialize unified data resolver
+
+        # Initialize unified data resolver with unified cache
         self.data_resolver = UnifiedDataResolver(
             memory_registry=self.datasets,
             artifact_bridge=self.artifact_bridge,
-            data_loader=DatasetLoader(str(self.settings.data_dir))
+            data_loader=DatasetLoader(str(self.config.path_manager.cache_dir))
         )
-        
+
         # Initialize unified model resolver
         self.model_resolver = UnifiedModelResolver(
             artifact_bridge=self.artifact_bridge
         )
 
-        # Initialize components with artifact bridge
-        self.trainer = ModelTrainer(self.settings, self.artifact_bridge)
-        self.evaluator = ModelEvaluator(self.settings)
-        self.data_loader = DatasetLoader(str(self.settings.data_dir))
+        # Initialize components with unified paths
+        self.trainer = ModelTrainer(self.config, self.artifact_bridge)
+        self.evaluator = TrainedModelEvaluator(self.config)
+        self.data_loader = DatasetLoader(str(self.config.path_manager.cache_dir))
         
         # Local tracking is initialized globally via get_tracker()
 
@@ -175,13 +179,75 @@ class TrainingTools(BaseMCPTools):
                             "description": "How to store artifacts: memory_only (in-memory, MCP-friendly), filesystem (traditional files), hybrid (both)",
                             "default": "memory_only",
                         },
+                        "validation_size": {
+                            "type": "number",
+                            "minimum": 0.1,
+                            "maximum": 0.5,
+                            "description": "Proportion of training data to use for validation",
+                            "default": 0.2,
+                        },
+                        "stratify": {
+                            "type": "boolean",
+                            "description": "Use stratified sampling for train/test split",
+                            "default": True,
+                        },
+                        "tuning_method": {
+                            "type": "string",
+                            "enum": ["grid_search", "random_search"],
+                            "description": "Hyperparameter tuning method (used when enable_tuning=true)",
+                            "default": "grid_search",
+                        },
+                        "tuning_cv": {
+                            "type": "integer",
+                            "minimum": 2,
+                            "maximum": 10,
+                            "description": "Number of CV folds for hyperparameter tuning",
+                            "default": 3,
+                        },
+                        "tuning_scoring": {
+                            "type": "string",
+                            "description": "Scoring metric for hyperparameter tuning (optional)",
+                        },
+                        "max_iter": {
+                            "type": "integer",
+                            "minimum": 50,
+                            "maximum": 1000,
+                            "description": "Maximum iterations for iterative algorithms",
+                            "default": 100,
+                        },
+                        "enable_cross_validation": {
+                            "type": "boolean",
+                            "description": "Enable cross-validation during training",
+                            "default": True,
+                        },
+                        "scoring_metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of scoring metrics for evaluation",
+                            "default": ["accuracy", "f1_macro"],
+                        },
+                        "save_model": {
+                            "type": "boolean",
+                            "description": "Save the trained model",
+                            "default": True,
+                        },
+                        "save_metrics": {
+                            "type": "boolean",
+                            "description": "Save training metrics",
+                            "default": True,
+                        },
+                        "save_predictions": {
+                            "type": "boolean",
+                            "description": "Save model predictions",
+                            "default": False,
+                        },
                     },
                     "required": ["target_column"],
                 },
             ),
             Tool(
                 name="evaluate_model",
-                description="Evaluate a trained model or compare multiple models with comprehensive metrics",
+                description="Evaluate a single trained model with comprehensive metrics and cross-validation",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -208,10 +274,17 @@ class TrainingTools(BaseMCPTools):
                             "description": "Number of cross-validation folds",
                             "default": 5,
                         },
-                        "metrics": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Specific metrics to calculate (optional)",
+                        "enable_statistical_tests": {
+                            "type": "boolean",
+                            "description": "Perform statistical significance tests",
+                            "default": True,
+                        },
+                        "significance_level": {
+                            "type": "number",
+                            "minimum": 0.01,
+                            "maximum": 0.1,
+                            "description": "Significance level for statistical tests",
+                            "default": 0.05,
                         },
                         "generate_learning_curves": {
                             "type": "boolean",
@@ -221,6 +294,23 @@ class TrainingTools(BaseMCPTools):
                         "detailed_metrics": {
                             "type": "boolean",
                             "description": "Calculate detailed metrics and reports",
+                            "default": True,
+                        },
+                        "scoring_metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of scoring metrics for evaluation",
+                            "default": ["accuracy", "f1_macro"],
+                        },
+                        "learning_curve_train_sizes": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Training sizes for learning curves",
+                            "default": [0.1, 0.33, 0.55, 0.78, 1.0],
+                        },
+                        "save_results": {
+                            "type": "boolean",
+                            "description": "Save evaluation results",
                             "default": True,
                         },
                     },
@@ -268,6 +358,33 @@ class TrainingTools(BaseMCPTools):
                             "maximum": 0.1,
                             "description": "Significance level for statistical tests",
                             "default": 0.05,
+                        },
+                        "scoring_metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of scoring metrics for model comparison",
+                            "default": ["accuracy", "f1_macro"],
+                        },
+                        "generate_learning_curves": {
+                            "type": "boolean",
+                            "description": "Generate learning curves",
+                            "default": False,
+                        },
+                        "learning_curve_train_sizes": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Training sizes for learning curves",
+                            "default": [0.1, 0.33, 0.55, 0.78, 1.0],
+                        },
+                        "detailed_metrics": {
+                            "type": "boolean",
+                            "description": "Calculate detailed metrics and reports",
+                            "default": True,
+                        },
+                        "save_results": {
+                            "type": "boolean",
+                            "description": "Save comparison results",
+                            "default": True,
                         },
                     },
                     "required": ["model_paths", "target_column"],
@@ -473,8 +590,19 @@ class TrainingTools(BaseMCPTools):
                 algorithm=args.get("algorithm", "random_forest"),
                 model_type=args.get("model_type", "auto"),
                 test_size=args.get("test_size", 0.2),
+                validation_size=args.get("validation_size", 0.2),
                 enable_tuning=args.get("enable_tuning", False),
                 cv_folds=args.get("cv_folds", 5),
+                stratify=args.get("stratify", True),
+                tuning_method=args.get("tuning_method", "grid_search"),
+                tuning_cv=args.get("tuning_cv", 3),
+                tuning_scoring=args.get("tuning_scoring"),
+                max_iter=args.get("max_iter", 100),
+                enable_cross_validation=args.get("enable_cross_validation", True),
+                scoring_metrics=args.get("scoring_metrics", ["accuracy", "f1_macro"]),
+                save_model=args.get("save_model", True),
+                save_metrics=args.get("save_metrics", True),
+                save_predictions=args.get("save_predictions", False),
                 random_state=args.get("random_state", 42),
                 persistence=persistence_config,
             )
@@ -511,10 +639,6 @@ class TrainingTools(BaseMCPTools):
                     "cross_validation_std": round(results.cv_std, 4) if results.cv_scores else None
                 },
                 "artifact_storage": artifact_storage,
-                "legacy_paths": {
-                    "model_path": results.model_path,
-                    "metrics_path": results.metrics_path
-                },
                 "detailed_metrics": {k: round(v, 4) if isinstance(v, (int, float)) else v for k, v in results.metrics.items()} if results.metrics else {},
                 "tracking_database": str(get_tracker().db_path) if hasattr(get_tracker(), 'db_path') else None
             }
@@ -598,8 +722,13 @@ class TrainingTools(BaseMCPTools):
             # Create evaluation configuration
             config = EvaluationConfig(
                 cv_folds=args.get("cv_folds", 5),
+                scoring_metrics=args.get("scoring_metrics", ["accuracy", "f1_macro"]),
+                enable_statistical_tests=args.get("enable_statistical_tests", True),
+                significance_level=args.get("significance_level", 0.05),
                 generate_learning_curves=args.get("generate_learning_curves", False),
+                learning_curve_train_sizes=args.get("learning_curve_train_sizes", [0.1, 0.33, 0.55, 0.78, 1.0]),
                 detailed_metrics=args.get("detailed_metrics", True),
+                save_results=args.get("save_results", True),
             )
 
             # Evaluate model
@@ -711,8 +840,13 @@ class TrainingTools(BaseMCPTools):
             # Create evaluation configuration
             config = EvaluationConfig(
                 cv_folds=args.get("cv_folds", 5),
+                scoring_metrics=args.get("scoring_metrics", ["accuracy", "f1_macro"]),
                 enable_statistical_tests=args.get("enable_statistical_tests", True),
                 significance_level=args.get("significance_level", 0.05),
+                generate_learning_curves=args.get("generate_learning_curves", False),
+                learning_curve_train_sizes=args.get("learning_curve_train_sizes", [0.1, 0.33, 0.55, 0.78, 1.0]),
+                detailed_metrics=args.get("detailed_metrics", True),
+                save_results=args.get("save_results", True),
             )
 
             # Compare models
@@ -789,11 +923,23 @@ class TrainingTools(BaseMCPTools):
             # Create training configuration with tuning enabled
             config = TrainingConfig(
                 algorithm=args["algorithm"],
+                model_type=args.get("model_type", "auto"),
+                test_size=args.get("test_size", 0.2),
+                validation_size=args.get("validation_size", 0.2),
                 enable_tuning=True,
+                cv_folds=args.get("cv_folds", 5),
+                stratify=args.get("stratify", True),
                 tuning_method=args.get("tuning_method", "grid_search"),
                 tuning_cv=args.get("cv_folds", 3),
                 tuning_scoring=args.get("scoring"),
-                test_size=args.get("test_size", 0.2),
+                max_iter=args.get("max_iter", 100),
+                enable_cross_validation=args.get("enable_cross_validation", True),
+                scoring_metrics=args.get("scoring_metrics", ["accuracy", "f1_macro"]),
+                save_model=args.get("save_model", True),
+                save_metrics=args.get("save_metrics", True),
+                save_predictions=args.get("save_predictions", False),
+                random_state=args.get("random_state", 42),
+                persistence=create_default_persistence_config("memory_only"),
             )
 
             # Train model with tuning

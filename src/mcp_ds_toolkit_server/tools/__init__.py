@@ -5,15 +5,16 @@ This module provides MCP (Model Context Protocol) tools for data science operati
 including data management, model training, and experiment tracking.
 """
 
-import logging
 import warnings
 from typing import Any, Dict, List, Optional
+
+from mcp_ds_toolkit_server.utils.logger import make_logger
 
 # Suppress common warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 warnings.filterwarnings("ignore", category=FutureWarning, module='pandas')
 
-logger = logging.getLogger(__name__)
+logger = make_logger(__name__)
 
 from mcp_ds_toolkit_server.tools.base import BaseMCPTools
 from mcp_ds_toolkit_server.tools.data_management import DataManagementTools

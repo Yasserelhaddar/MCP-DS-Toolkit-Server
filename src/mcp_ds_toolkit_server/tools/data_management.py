@@ -18,26 +18,12 @@ from mcp.types import (
     TextContent,
     Tool,
 )
-from sklearn.ensemble import (
-    RandomForestClassifier,
-    RandomForestRegressor,
-    GradientBoostingClassifier,
-    GradientBoostingRegressor,
-    ExtraTreesClassifier,
-    ExtraTreesRegressor,
-)
-from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge, Lasso, ElasticNet
-from sklearn.svm import SVC, SVR
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from mcp_ds_toolkit_server.tools.base import BaseMCPTools
 from mcp_ds_toolkit_server.data import (
     CleaningConfig,
     CrossValidationMethod,
     DataCleaner,
-    DataDriftMetric,
     DataProfiler,
     DatasetLoader,
     DataSplitter,
@@ -53,14 +39,10 @@ from mcp_ds_toolkit_server.data import (
     OutlierMethod,
     PreprocessingConfig,
     PreprocessingPipeline,
-    RemoteConfig,
-    RemoteStorageType,
     ScalingMethod,
     SelectionMethod,
     SplittingConfig,
     SplittingMethod,
-    VersioningConfig,
-    VersioningStrategy,
 )
 from mcp_ds_toolkit_server.data.model_evaluation import (
     CrossValidationConfig,
@@ -71,34 +53,37 @@ from mcp_ds_toolkit_server.data.model_evaluation import (
     get_default_param_grids,
 )
 from mcp_ds_toolkit_server.exceptions import DataError
-from mcp_ds_toolkit_server.utils.data_resolver import UnifiedDataResolver
-from mcp_ds_toolkit_server.utils.persistence import (
+from mcp_ds_toolkit_server.utils import (
+    UnifiedDataResolver,
     ArtifactBridge,
     PersistenceConfig,
     create_default_persistence_config,
+    Settings,
 )
-from mcp_ds_toolkit_server.utils.config import Settings
 
 
 class DataManagementTools(BaseMCPTools):
     """MCP tools for data management operations."""
 
-    def __init__(self, workspace_path: Path, artifact_bridge=None):
+    def __init__(self, config, artifact_bridge=None):
         """Initialize data management tools.
 
         Args:
-            workspace_path: Path to the workspace directory
+            config: Settings object with unified path management
             artifact_bridge: Artifact bridge for persistence operations
         """
         # Use base class initialization to eliminate redundancy
         super().__init__(
-            workspace_path=workspace_path, 
+            workspace_path=config.path_manager.workspace_dir,
             persistence_mode="memory_only",
             artifact_bridge=artifact_bridge
         )
-        
-        # Initialize components
-        cache_dir = str(self.workspace_path / "cache")
+
+        # Store config for unified path access
+        self.config = config
+
+        # Initialize components with unified cache structure
+        cache_dir = str(self.config.path_manager.cache_dir)
         self.loader = DatasetLoader(cache_dir=cache_dir)
         self.validator = DataValidator()
         self.profiler = DataProfiler()
@@ -139,90 +124,23 @@ class DataManagementTools(BaseMCPTools):
         }
         return mime_types.get(format, "text/plain")
 
-    # Algorithm mapping constants for ML evaluation tools
-    CLASSIFICATION_ALGORITHMS = {
-        "random_forest": RandomForestClassifier,
-        "gradient_boosting": GradientBoostingClassifier,
-        "extra_trees": ExtraTreesClassifier,
-        "logistic_regression": LogisticRegression,
-        "svm": SVC,
-        "knn": KNeighborsClassifier,
-        "gaussian_nb": GaussianNB,
-        "multinomial_nb": MultinomialNB,
-        "bernoulli_nb": BernoulliNB,
-        "decision_tree": DecisionTreeClassifier,
-    }
-
-    REGRESSION_ALGORITHMS = {
-        "random_forest": RandomForestRegressor,
-        "random_forest_regressor": RandomForestRegressor,
-        "gradient_boosting": GradientBoostingRegressor,
-        "extra_trees": ExtraTreesRegressor,
-        "linear_regression": LinearRegression,
-        "ridge": Ridge,
-        "lasso": Lasso,
-        "elastic_net": ElasticNet,
-        "svm": SVR,
-        "svm_regressor": SVR,
-        "knn": KNeighborsRegressor,
-        "decision_tree": DecisionTreeRegressor,
-    }
-
-    def _create_model(self, model_type: str, task_type: str):
-        """Create a scikit-learn model instance.
-
-        Args:
-            model_type: Type of model (e.g., 'random_forest', 'logistic_regression')
-            task_type: Type of task ('classification' or 'regression')
-
-        Returns:
-            Configured scikit-learn model instance or None if unsupported
-        """
-        try:
-            if task_type == "classification":
-                algorithms = self.CLASSIFICATION_ALGORITHMS
-            elif task_type == "regression":
-                algorithms = self.REGRESSION_ALGORITHMS
-            else:
-                return None
-
-            if model_type not in algorithms:
-                return None
-
-            model_class = algorithms[model_type]
-
-            # Set random state if the model supports it
-            kwargs = {}
-            # Only add random_state for models that support it
-            if model_type in ["random_forest", "random_forest_regressor", "gradient_boosting", "extra_trees", "decision_tree", "logistic_regression"]:
-                kwargs["random_state"] = 42
-
-            # Special configurations for specific algorithms
-            if model_type == "logistic_regression":
-                kwargs["max_iter"] = 1000
-
-            return model_class(**kwargs)
-
-        except Exception:
-            return None
 
     def _resolve_dataset(self, dataset_name: str, dataset_path: str = None, artifact_key: str = None):
-        """Resolve dataset using unified data resolver with fallback to legacy registry.
-        
+        """Resolve dataset using unified data resolver.
+
         This method provides intelligent dataset discovery across multiple sources:
         1. Unified data resolver (artifact bridge, memory, filesystem)
-        2. Legacy self.datasets registry (for backward compatibility)
-        
+
         Args:
             dataset_name: Name of the dataset
             dataset_path: Optional filesystem path
             artifact_key: Optional artifact bridge key
-            
+
         Returns:
             tuple: (DataFrame, data_reference) or raises DataError if not found
         """
         try:
-            # Try unified data resolver first
+            # Use unified data resolver
             df, data_reference = self.data_resolver.resolve_data(
                 dataset_name=dataset_name,
                 dataset_path=dataset_path,
@@ -231,44 +149,24 @@ class DataManagementTools(BaseMCPTools):
             )
             self.logger.info(f"✅ Resolved dataset '{dataset_name}' via unified resolver from {data_reference.location_type}")
             return df, data_reference
-            
+
         except Exception as resolver_error:
-            # Fallback to legacy registry for backward compatibility
-            if dataset_name in self.datasets:
-                df = self.datasets[dataset_name]
-                # Create a data reference for legacy data
-                from mcp_ds_toolkit_server.utils.data_resolver import DataReference
-                from mcp_ds_toolkit_server.utils.persistence import PersistenceMode
-                data_reference = DataReference(
-                    name=dataset_name,
-                    location_type="legacy_registry",
-                    persistence_mode=PersistenceMode.MEMORY_ONLY,
-                    memory_key=dataset_name,
-                    metadata={"source": "legacy_datasets_registry"}
-                )
-                self.logger.info(f"✅ Resolved dataset '{dataset_name}' via legacy registry (fallback)")
-                return df, data_reference
+            # Check what datasets are available
+            available_datasets = []
+
+            try:
+                available_datasets.extend([ref.name for ref in self.data_resolver.list_available_data()])
+            except Exception:
+                pass
+
+            error_msg = f"Dataset '{dataset_name}' not found."
+            if available_datasets:
+                error_msg += f" Available datasets: {sorted(set(available_datasets))}"
             else:
-                # Neither resolver nor legacy registry found the dataset
-                available_datasets = []
-                
-                # Check unified resolver
-                try:
-                    available_datasets.extend([ref.name for ref in self.data_resolver.list_available_data()])
-                except Exception:
-                    pass
-                
-                # Check legacy registry
-                available_datasets.extend(list(self.datasets.keys()))
-                
-                error_msg = f"Dataset '{dataset_name}' not found in any source."
-                if available_datasets:
-                    error_msg += f" Available datasets: {sorted(set(available_datasets))}"
-                else:
-                    error_msg += " No datasets available. Load a dataset first."
-                    
-                self.logger.error(f"❌ {error_msg}")
-                raise DataError(error_msg)
+                error_msg += " No datasets available. Load a dataset first."
+
+            self.logger.error(f"❌ {error_msg}")
+            raise DataError(error_msg)
 
     def get_tools(self) -> List[Tool]:
         """Get all available MCP tools for data management.
@@ -280,13 +178,13 @@ class DataManagementTools(BaseMCPTools):
             # Dataset Loading Tools
             Tool(
                 name="load_dataset",
-                description="Load a dataset from various sources (CSV, JSON, Parquet, SQL, etc.)",
+                description="Load a dataset from various sources: uploaded files (full path), data directory (filename), URLs, or sklearn datasets",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "source": {
                             "type": "string",
-                            "description": "Path to the dataset file, database connection string, or file:// URI for uploaded files",
+                            "description": "Path to dataset file (full path for uploaded files, filename for data directory), URL for remote datasets, or sklearn dataset name",
                         },
                         "format": {
                             "type": "string",
@@ -509,8 +407,9 @@ class DataManagementTools(BaseMCPTools):
                         },
                         "outlier_strategy": {
                             "type": "string",
-                            "enum": ["remove", "cap", "transform"],
+                            "enum": ["remove", "cap", "transform", "flag", "leave_as_is"],
                             "description": "Strategy for handling outliers",
+                            "default": "cap",
                         },
                         "outlier_method": {
                             "type": "string",
@@ -527,6 +426,97 @@ class DataManagementTools(BaseMCPTools):
                                 "lof",
                             ],
                             "description": "Method for outlier detection (supports both full names and short aliases)",
+                            "default": "iqr",
+                        },
+                        "missing_constant_value": {
+                            "type": ["string", "number"],
+                            "description": "Value to use when missing_strategy is fill_constant",
+                            "default": 0,
+                        },
+                        "missing_drop_threshold": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "description": "Proportion of missing values above which to drop columns/rows",
+                            "default": 0.5,
+                        },
+                        "missing_knn_neighbors": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50,
+                            "description": "Number of neighbors for KNN imputation",
+                            "default": 5,
+                        },
+                        "missing_max_iter": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100,
+                            "description": "Maximum iterations for iterative imputation",
+                            "default": 10,
+                        },
+                        "missing_random_state": {
+                            "type": "integer",
+                            "description": "Random seed for reproducible imputation",
+                            "default": 42,
+                        },
+                        "outlier_z_threshold": {
+                            "type": "number",
+                            "minimum": 1.0,
+                            "maximum": 5.0,
+                            "description": "Z-score threshold for outlier detection",
+                            "default": 3.0,
+                        },
+                        "outlier_iqr_multiplier": {
+                            "type": "number",
+                            "minimum": 0.5,
+                            "maximum": 3.0,
+                            "description": "IQR multiplier for outlier detection",
+                            "default": 1.5,
+                        },
+                        "outlier_contamination": {
+                            "type": "number",
+                            "minimum": 0.01,
+                            "maximum": 0.5,
+                            "description": "Expected contamination ratio for isolation forest and LOF",
+                            "default": 0.1,
+                        },
+                        "outlier_percentile_lower": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 50.0,
+                            "description": "Lower percentile bound for percentile-based outlier detection",
+                            "default": 5.0,
+                        },
+                        "outlier_percentile_upper": {
+                            "type": "number",
+                            "minimum": 50.0,
+                            "maximum": 100.0,
+                            "description": "Upper percentile bound for percentile-based outlier detection",
+                            "default": 95.0,
+                        },
+                        "outlier_dbscan_eps": {
+                            "type": "number",
+                            "minimum": 0.1,
+                            "maximum": 2.0,
+                            "description": "DBSCAN epsilon parameter",
+                            "default": 0.5,
+                        },
+                        "outlier_dbscan_min_samples": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50,
+                            "description": "DBSCAN minimum samples parameter",
+                            "default": 5,
+                        },
+                        "handle_missing_first": {
+                            "type": "boolean",
+                            "description": "Handle missing values before outlier detection",
+                            "default": True,
+                        },
+                        "preserve_original": {
+                            "type": "boolean",
+                            "description": "Preserve original dataset alongside cleaned version",
+                            "default": True,
                         },
                         "output_name": {
                             "type": "string",
@@ -768,90 +758,6 @@ class DataManagementTools(BaseMCPTools):
                 },
             ),
             Tool(
-                name="generate_learning_curve",
-                description="Generate learning curve analysis for a model",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "dataset_name": {
-                            "type": "string",
-                            "description": "Name of the dataset to use for evaluation",
-                        },
-                        "target_column": {
-                            "type": "string",
-                            "description": "Target column name",
-                        },
-                        "model_type": {
-                            "type": "string",
-                            "enum": [
-                                "random_forest",
-                                "logistic_regression",
-                                "svm",
-                                "linear_regression",
-                                "random_forest_regressor",
-                                "svm_regressor",
-                            ],
-                            "description": "Type of model to evaluate",
-                        },
-                        "task_type": {
-                            "type": "string",
-                            "enum": ["classification", "regression"],
-                            "description": "Type of ML task",
-                            "default": "classification",
-                        },
-                        "cv_config": {
-                            "type": "object",
-                            "description": "Cross-validation configuration",
-                            "properties": {
-                                "method": {
-                                    "type": "string",
-                                    "enum": ["k_fold", "stratified_k_fold"],
-                                    "default": "stratified_k_fold",
-                                },
-                                "n_folds": {
-                                    "type": "integer",
-                                    "default": 5,
-                                    "minimum": 2,
-                                },
-                                "random_state": {"type": "integer", "default": 42},
-                                "scoring": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Scoring metrics (default: accuracy for classification, neg_mean_squared_error for regression)",
-                                },
-                            },
-                        },
-                        "tune_hyperparameters": {
-                            "type": "boolean",
-                            "description": "Whether to tune hyperparameters",
-                            "default": False,
-                        },
-                        "tuning_config": {
-                            "type": "object",
-                            "description": "Hyperparameter tuning configuration",
-                            "properties": {
-                                "method": {
-                                    "type": "string",
-                                    "enum": ["grid_search", "random_search"],
-                                    "default": "grid_search",
-                                },
-                                "n_iter": {
-                                    "type": "integer",
-                                    "default": 100,
-                                    "description": "Number of iterations for random search",
-                                },
-                                "cv_folds": {"type": "integer", "default": 5},
-                                "param_grid": {
-                                    "type": "object",
-                                    "description": "Custom parameter grid (uses defaults if not provided)",
-                                },
-                            },
-                        },
-                    },
-                    "required": ["dataset_name", "target_column", "model_type"],
-                },
-            ),
-            Tool(
                 name="remove_dataset",
                 description="Remove a dataset from memory and optionally delete files",
                 inputSchema={
@@ -924,10 +830,6 @@ class DataManagementTools(BaseMCPTools):
                 return await self._handle_compare_datasets(arguments)
             elif tool_name == "batch_process_datasets":
                 return await self._handle_batch_process_datasets(arguments)
-            elif tool_name == "quick_evaluate_model":
-                return await self._handle_evaluate_model(arguments)
-            elif tool_name == "generate_learning_curve":
-                return await self._handle_generate_learning_curve(arguments)
             elif tool_name == "remove_dataset":
                 return await self._handle_remove_dataset(arguments)
             elif tool_name == "clear_all_data":
@@ -946,160 +848,85 @@ class DataManagementTools(BaseMCPTools):
     async def _handle_load_dataset(
         self, arguments: Dict[str, Any]
     ) -> List[TextContent]:
-        """Handle load_dataset tool call."""
+        """Handle load_dataset tool call using clean filesystem approach."""
         source = arguments["source"]
         format_type = arguments["format"]
         name = arguments["name"]
         options = arguments.get("options", {})
 
-        # Track temporary file for cleanup
-        temp_file_path = None
-
-        # Handle file:// URIs for uploaded files
-        if source.startswith("file://"):
-            try:
-                # Import the server's read_resource function
-                from mcp_ds_toolkit_server.server import read_resource
-
-                # Read file content using MCP resource system
-                file_content = await read_resource(source)
-
-                # Create temporary file from content for processing
-                import tempfile
-                from pathlib import Path
-                from urllib.parse import urlparse
-
-                # Extract filename from URI for better temp file naming
-                parsed_uri = urlparse(source)
-                original_filename = Path(parsed_uri.path).name
-
-                if original_filename:
-                    suffix = Path(original_filename).suffix
-                else:
-                    suffix = f".{format_type}"
-
-                with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False) as f:
-                    f.write(file_content)
-                    temp_file_path = Path(f.name)
-
-                # Use the temporary file as the source for processing
-                source = str(temp_file_path)
-                self.logger.info(f"Processed file:// URI {arguments['source']} -> {source}")
-
-            except Exception as e:
-                error_msg = f"Failed to read file:// resource: {str(e)}"
-                self.logger.error(error_msg)
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps({
-                            "status": "error",
-                            "message": error_msg,
-                            "dataset_name": name
-                        })
-                    )
-                ]
-
         # Handle sklearn dataset sources
+        sklearn_datasets = ["iris", "wine", "breast_cancer", "diabetes", "digits"]
+
         if source and source.startswith("sklearn.datasets."):
-            # Extract the dataset name from sklearn.datasets.name format
             sklearn_name = source.split(".")[-1]
             source = sklearn_name
         elif source == "sklearn" and "dataset_name" in options:
-            # Handle sklearn with dataset_name in options
             source = options["dataset_name"]
-            # Remove dataset_name from options as it's not needed for DatasetLoader
             options = {k: v for k, v in options.items() if k != "dataset_name"}
 
-        # Handle file paths - search for files in multiple locations
-        import os
-        import tempfile
-        from pathlib import Path
-
-        sklearn_datasets = ["iris", "wine", "breast_cancer", "diabetes", "digits"]
-
-        if (
-            not source.startswith(("http://", "https://", "/"))
-            and source not in sklearn_datasets
-            and source != "sklearn"
-        ):
-            # It's likely a file path - search in multiple locations
-            source_path = Path(source)
-
-            if not source_path.is_absolute():
-                # Search locations for uploaded/relative files
-                search_locations = [
-                    # Current working directory
-                    Path.cwd() / source,
-                    # User's home directory
-                    Path.home() / source,
-                    # Temp directories (common for uploaded files)
-                    Path(tempfile.gettempdir()) / source,
-                    # Downloads folder (common location)
-                    Path.home() / "Downloads" / source,
-                    # Common temp locations for uploaded files
-                    Path("/tmp") / source,
-                ]
-
-                # Check each location
-                found_file = None
-                for location in search_locations:
-                    try:
-                        if location.exists() and location.is_file():
-                            found_file = location
-                            break
-                    except (OSError, PermissionError):
-                        continue
-
-                if found_file:
-                    source = str(found_file.resolve())
-                    self.logger.info(f"Found uploaded file at: {source}")
-                else:
-                    # Try to search more broadly for the filename
-                    import glob
-                    import os
-
-                    # Search common upload locations (non-recursive to avoid performance issues)
-                    search_patterns = [
-                        f"/tmp/{source}",
-                        f"{Path.home()}/Downloads/{source}",
-                        f"{Path.home()}/Desktop/{source}",
-                        f"{Path.cwd()}/{source}",
-                    ]
-
-                    import time
-                    search_start_time = time.time()
-                    max_search_time = 30  # 30 second timeout
-                    max_results = 100  # Limit number of results to process
-
-                    for pattern in search_patterns:
-                        try:
-                            # Check timeout
-                            if time.time() - search_start_time > max_search_time:
-                                self.logger.warning("File search timeout reached, stopping search")
-                                break
-
-                            matches = glob.glob(pattern)
-                            if matches:
-                                # Limit results to prevent excessive processing
-                                matches = matches[:max_results]
-                                # Take the most recently modified file
-                                most_recent = max(matches, key=os.path.getmtime)
-                                source = most_recent
-                                self.logger.info(
-                                    f"Found uploaded file via search at: {source}"
-                                )
-                                break
-                        except (OSError, PermissionError, ValueError) as e:
-                            self.logger.debug(f"Search pattern {pattern} failed: {e}")
-                            continue
-
         try:
-            # Load dataset - DatasetLoader returns (DataFrame, DatasetInfo)
-            # Pass options as kwargs to handle encoding and other parameters
-            dataset, dataset_info = self.loader.load_dataset(source, **options)
+            # Handle URLs and sklearn datasets normally
+            if (source.startswith(("http://", "https://")) or
+                source in sklearn_datasets or
+                source == "sklearn"):
+                # Use DatasetLoader directly for URLs and sklearn datasets
+                dataset, dataset_info = self.loader.load_dataset(source, **options)
+            else:
+                # Detect if this is an absolute path (uploaded file) or relative filename (data directory)
+                from pathlib import Path
+                from mcp_ds_toolkit_server.utils.config import Settings
 
-            # Store dataset in both memory registry and artifact bridge for cross-tool access
+                settings = Settings()
+                source_path = Path(source)
+
+                if source_path.is_absolute():
+                    # Absolute path - likely an uploaded file from Claude Desktop
+                    self.logger.info(f"Attempting to load from absolute path: {source}")
+                    self.logger.info(f"Path exists: {source_path.exists()}")
+                    if not source_path.exists():
+                        # Try alternative common upload paths
+                        alt_paths = [
+                            Path("/tmp") / source_path.name,
+                            Path("/var/tmp") / source_path.name,
+                            Path.home() / "Downloads" / source_path.name
+                        ]
+                        for alt_path in alt_paths:
+                            self.logger.info(f"Trying alternative path: {alt_path}")
+                            if alt_path.exists():
+                                source_path = alt_path
+                                self.logger.info(f"Found file at alternative path: {alt_path}")
+                                break
+                        else:
+                            raise ValueError(f"Uploaded file not found: {source}")
+
+                    # Load directly from uploaded file path
+                    dataset, dataset_info = self.loader.load_dataset(str(source_path), **options)
+                    self.logger.info(f"Loaded dataset from uploaded file: {source_path}")
+
+                else:
+                    # Relative path - look in unified data directory
+                    data_file_path = self.config.path_manager.data_dir / source
+
+                    # Security validation: ensure path stays within data directory
+                    resolved_path = data_file_path.resolve()
+                    data_dir_resolved = self.config.path_manager.data_dir.resolve()
+
+                    if not str(resolved_path).startswith(str(data_dir_resolved)):
+                        raise ValueError(f"Access denied: path traversal not allowed")
+
+                    if not data_file_path.exists():
+                        self.config.path_manager.data_dir.mkdir(parents=True, exist_ok=True)
+                        raise ValueError(
+                            f"File '{source}' not found.\n"
+                            f"Please save your file to the data directory: {self.config.path_manager.data_dir}\n"
+                            f"Data directory contents: {list(self.config.path_manager.data_dir.glob('*')) if self.config.path_manager.data_dir.exists() else 'empty'}"
+                        )
+
+                    # Load dataset from data directory
+                    dataset, dataset_info = self.loader.load_dataset(str(data_file_path), **options)
+                    self.logger.info(f"Loaded dataset from data directory: {source}")
+
+            # Store dataset in memory registry and artifact bridge
             self.datasets[name] = dataset
             self.dataset_metadata[name] = {
                 "source": source,
@@ -1111,11 +938,11 @@ class DataManagementTools(BaseMCPTools):
                 "memory_usage": dataset.memory_usage(deep=True).sum(),
                 "dataset_info": dataset_info,
             }
-            
-            # Also store in artifact bridge for cross-tool sharing (e.g., WorkflowTools)
+
+            # Store in artifact bridge for cross-tool sharing
             self.artifact_bridge.store_artifact(
-                name, 
-                dataset, 
+                name,
+                dataset,
                 {
                     "type": "dataset",
                     "source": source,
@@ -1125,10 +952,8 @@ class DataManagementTools(BaseMCPTools):
                 }
             )
 
-            # Register dataset as MCP Resource for Claude access
+            # Register dataset as MCP Resource
             try:
-                # Convert dataset to CSV format for resource storage
-                dataset_content = dataset.to_csv(index=False)
                 resource_uri = self.artifact_bridge.register_resource(
                     artifact_key=f"dataset_{name}",
                     name=f"Dataset: {name}",
@@ -1139,19 +964,10 @@ class DataManagementTools(BaseMCPTools):
             except Exception as e:
                 self.logger.warning(f"Failed to register dataset '{name}' as MCP Resource: {e}")
 
-            # Cleanup temporary file if created from file:// URI
-            if temp_file_path:
-                try:
-                    if temp_file_path.exists():
-                        temp_file_path.unlink()
-                        self.logger.debug(f"Cleaned up temporary file: {temp_file_path}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to cleanup temporary file {temp_file_path}: {e}")
-
             return [
                 TextContent(
                     type="text",
-                    text=f"Successfully loaded dataset '{name}' from {arguments['source']}\n"
+                    text=f"Successfully loaded dataset '{name}' from {source}\n"
                     f"Shape: {dataset.shape}\n"
                     f"Columns: {list(dataset.columns)}\n"
                     f"Memory usage: {dataset.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB",
@@ -1159,42 +975,14 @@ class DataManagementTools(BaseMCPTools):
             ]
 
         except Exception as e:
-            # Provide enhanced error message for file not found cases
-            if "File not found" in str(e) and not source.startswith(
-                ("http://", "https://", "/")
-            ):
-                error_msg = (
-                    f"Error loading dataset '{name}' from {arguments['source']}: {str(e)}\n\n"
-                    f"💡 If you uploaded a file in the chat, try using one of these approaches:\n"
-                    f"1. Use the full file path if you know it (e.g., '/tmp/your-file.csv')\n"
-                    f"2. Copy the file to your current directory first\n"
-                    f"3. Use a URL if the file is available online\n\n"
-                    f"Search locations checked:\n"
-                    f"- Current directory: {Path.cwd()}\n"
-                    f"- Home directory: {Path.home()}\n"
-                    f"- Downloads folder: {Path.home() / 'Downloads'}\n"
-                    f"- System temp directories\n"
-                    f"- Common upload locations"
-                )
-            else:
-                error_msg = f"Error loading dataset '{name}' from {arguments['source']}: {str(e)}"
-
+            error_msg = f"Error loading dataset '{name}' from {source}: {str(e)}"
             self.logger.error(error_msg)
-
-            # Cleanup temporary file if created from file:// URI
-            if temp_file_path:
-                try:
-                    if temp_file_path.exists():
-                        temp_file_path.unlink()
-                        self.logger.debug(f"Cleaned up temporary file: {temp_file_path}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to cleanup temporary file {temp_file_path}: {e}")
 
             error_result = {
                 "status": "error",
                 "message": error_msg,
                 "dataset_name": name,
-                "source": arguments['source']
+                "source": source
             }
             return self._create_json_response(error_result)
 
@@ -1451,16 +1239,33 @@ class DataManagementTools(BaseMCPTools):
             mapping = {"zscore": "z_score", "lof": "local_outlier_factor"}
             return mapping.get(method, method)
 
-        # Create cleaning config
+        # Create comprehensive cleaning config with all parameters
         missing_config = MissingDataConfig(
-            method=MissingDataMethod(map_missing_strategy(missing_strategy))
+            method=MissingDataMethod(map_missing_strategy(missing_strategy)),
+            constant_value=arguments.get("missing_constant_value", 0),
+            drop_threshold=arguments.get("missing_drop_threshold", 0.5),
+            knn_neighbors=arguments.get("missing_knn_neighbors", 5),
+            max_iter=arguments.get("missing_max_iter", 10),
+            random_state=arguments.get("missing_random_state", 42),
         )
         outlier_config = OutlierConfig(
             method=OutlierMethod(map_outlier_method(outlier_method)),
             action=OutlierAction(outlier_strategy),
+            z_threshold=arguments.get("outlier_z_threshold", 3.0),
+            iqr_multiplier=arguments.get("outlier_iqr_multiplier", 1.5),
+            contamination=arguments.get("outlier_contamination", 0.1),
+            percentile_bounds=(
+                arguments.get("outlier_percentile_lower", 5.0),
+                arguments.get("outlier_percentile_upper", 95.0)
+            ),
+            dbscan_eps=arguments.get("outlier_dbscan_eps", 0.5),
+            dbscan_min_samples=arguments.get("outlier_dbscan_min_samples", 5),
         )
         config = CleaningConfig(
-            missing_data=missing_config, outlier_detection=outlier_config
+            missing_data=missing_config,
+            outlier_detection=outlier_config,
+            handle_missing_first=arguments.get("handle_missing_first", True),
+            preserve_original=arguments.get("preserve_original", True),
         )
 
         # Create cleaner and clean dataset
@@ -2064,213 +1869,6 @@ class DataManagementTools(BaseMCPTools):
                 TextContent(type="text", text=f"Error in batch processing: {str(e)}")
             ]
 
-    async def _handle_evaluate_model(
-        self, arguments: Dict[str, Any]
-    ) -> List[TextContent]:
-        """Handle model evaluation with cross-validation."""
-        try:
-            dataset_name = arguments["dataset_name"]
-            target_column = arguments["target_column"]
-            model_type = arguments["model_type"]
-            task_type_str = arguments.get("task_type", "classification")
-            cv_config_dict = arguments.get("cv_config", {})
-            tune_hyperparameters = arguments.get("tune_hyperparameters", False)
-            tuning_config_dict = arguments.get("tuning_config", {})
-
-            if dataset_name not in self.datasets:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Dataset '{dataset_name}' not found. Please load it first.",
-                    )
-                ]
-
-            dataset = self.datasets[dataset_name]
-            if target_column not in dataset.columns:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Target column '{target_column}' not found in dataset.",
-                    )
-                ]
-
-            # Prepare data
-            X = dataset.drop(columns=[target_column])
-            y = dataset[target_column]
-
-            # Set up task type
-            task_type = (
-                TaskType.CLASSIFICATION
-                if task_type_str == "classification"
-                else TaskType.REGRESSION
-            )
-
-            # Create model evaluator
-            evaluator = ModelEvaluator(task_type)
-
-            # Create model
-            model = self._create_model(model_type, task_type)
-            if model is None:
-                return [
-                    TextContent(
-                        type="text", text=f"Unsupported model type: {model_type}"
-                    )
-                ]
-
-            # Set up cross-validation config
-            cv_config = CrossValidationConfig(
-                method=(
-                    CrossValidationMethod.STRATIFIED_K_FOLD
-                    if cv_config_dict.get("method", "stratified_k_fold")
-                    == "stratified_k_fold"
-                    else CrossValidationMethod.K_FOLD
-                ),
-                n_folds=cv_config_dict.get("n_folds", 5),
-                random_state=cv_config_dict.get("random_state", 42),
-                scoring=cv_config_dict.get("scoring", evaluator.default_scoring),
-            )
-
-            # Set up hyperparameter tuning config if requested
-            tuning_config = None
-            if tune_hyperparameters:
-                param_grids = get_default_param_grids()
-                param_grid = tuning_config_dict.get("param_grid")
-                if param_grid is None:
-                    # Use default param grid based on model type
-                    if model_type == "random_forest":
-                        param_grid = param_grids.get(
-                            (
-                                "random_forest_classifier"
-                                if task_type == TaskType.CLASSIFICATION
-                                else "random_forest_regressor"
-                            ),
-                            {},
-                        )
-                    elif model_type == "logistic_regression":
-                        param_grid = param_grids.get("logistic_regression", {})
-                    elif model_type == "svm":
-                        param_grid = param_grids.get(
-                            (
-                                "svm_classifier"
-                                if task_type == TaskType.CLASSIFICATION
-                                else "svm_regressor"
-                            ),
-                            {},
-                        )
-                    else:
-                        param_grid = {}
-
-                tuning_config = HyperparameterTuningConfig(
-                    method=(
-                        HyperparameterTuningMethod.GRID_SEARCH
-                        if tuning_config_dict.get("method", "grid_search")
-                        == "grid_search"
-                        else HyperparameterTuningMethod.RANDOM_SEARCH
-                    ),
-                    param_grid=param_grid,
-                    n_iter=tuning_config_dict.get("n_iter", 100),
-                    cv_folds=tuning_config_dict.get("cv_folds", 5),
-                    scoring=tuning_config_dict.get(
-                        "scoring",
-                        (
-                            "accuracy"
-                            if task_type == TaskType.CLASSIFICATION
-                            else "neg_mean_squared_error"
-                        ),
-                    ),
-                )
-
-            # Evaluate model
-            report = evaluator.evaluate_model(
-                model=model,
-                X=X,
-                y=y,
-                model_name=model_type,
-                cv_config=cv_config,
-                tune_hyperparameters=tune_hyperparameters,
-                tuning_config=tuning_config,
-            )
-
-            # Format results
-            result = f"Model Evaluation Results\n"
-            result += f"{'=' * 25}\n\n"
-            result += f"Dataset: {dataset_name}\n"
-            result += f"Model: {model_type}\n"
-            result += f"Task: {task_type.value}\n"
-            result += f"Cross-validation: {cv_config.method.value} ({cv_config.n_folds} folds)\n\n"
-
-            if tune_hyperparameters and report.best_params:
-                result += f"Hyperparameter Tuning:\n"
-                result += f"  Method: {tuning_config.method.value}\n"
-                result += f"  Best Parameters: {report.best_params}\n\n"
-
-            result += f"Performance Metrics:\n"
-            for metric, score in report.mean_scores.items():
-                std = report.std_scores.get(metric, 0)
-                result += f"  {metric}: {score:.4f} (+/- {2*std:.4f})\n"
-
-            if report.feature_importance:
-                result += f"\nTop 10 Most Important Features:\n"
-                sorted_features = sorted(
-                    report.feature_importance.items(), key=lambda x: x[1], reverse=True
-                )[:10]
-                for i, (feature, importance) in enumerate(sorted_features, 1):
-                    result += f"  {i:2d}. {feature}: {importance:.4f}\n"
-
-            return [TextContent(type="text", text=result)]
-
-        except Exception as e:
-            self.logger.error(f"Error evaluating model: {str(e)}")
-            error_result = {
-                "status": "error", 
-                "operation": "evaluate_model",
-                "message": f"Error evaluating model: {str(e)}"
-            }
-            return self._create_json_response(error_result)
-
-    async def _handle_generate_learning_curve(
-        self, arguments: Dict[str, Any]
-    ) -> List[TextContent]:
-        """Handle learning curve generation (placeholder implementation)."""
-        try:
-            dataset_name = arguments["dataset_name"]
-            target_column = arguments["target_column"]
-            model_type = arguments["model_type"]
-            task_type = arguments.get("task_type", "classification")
-
-            if dataset_name not in self.datasets:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Dataset '{dataset_name}' not found. Please load it first.",
-                    )
-                ]
-
-            # For now, return a simple learning curve response
-            response = f"""Learning Curve Analysis
-Dataset: {dataset_name}
-Model: {model_type}
-Task: {task_type}
-
-Learning Curve Data:
-Train Size  Train Score  Val Score
-0.3         0.85         0.80
-0.6         0.90         0.82
-1.0         0.95         0.84
-
-Analysis:
-Final Training Score: 0.95
-Final Validation Score: 0.84
-Train-Validation Gap: 0.11
-Moderate gap - consider regularization techniques."""
-
-            return [TextContent(type="text", text=response)]
-
-        except Exception as e:
-            self.logger.error(f"Error in learning curve generation: {str(e)}")
-            return [
-                TextContent(type="text", text=f"Error in learning curve generation: {str(e)}")
-            ]
 
     async def _handle_remove_dataset(self, arguments: Dict[str, Any]) -> List[TextContent]:
         """Remove a dataset from memory and optionally delete files."""
@@ -2306,7 +1904,7 @@ Moderate gap - consider regularization techniques."""
                 ]
                 
                 for pattern in potential_files:
-                    matches = glob.glob(str(self.workspace_path / pattern))
+                    matches = glob.glob(str(self.config.path_manager.workspace_dir / pattern))
                     for match in matches:
                         try:
                             Path(match).unlink()
@@ -2365,7 +1963,7 @@ Moderate gap - consider regularization techniques."""
             
             # Clear cache directories if they exist
             cache_dirs_cleared = 0
-            cache_dir = self.workspace_path / "cache"
+            cache_dir = self.config.path_manager.cache_dir
             if cache_dir.exists():
                 import shutil
                 try:

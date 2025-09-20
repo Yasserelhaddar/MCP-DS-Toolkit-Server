@@ -2,7 +2,7 @@
 Local experiment tracking system using SQLite.
 
 A lightweight local tracking system that provides basic experiment tracking
-capabilities for the MCP MLOps server without external dependencies.
+capabilities for the MCP Data Science Toolkit server without external dependencies.
 """
 
 import json
@@ -14,6 +14,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import joblib
 import pandas as pd
+
+from mcp_ds_toolkit_server.utils.common import ensure_directory
+from mcp_ds_toolkit_server.utils.logger import make_logger
+
+logger = make_logger(__name__)
 
 
 class LocalExperimentTracker:
@@ -32,12 +37,12 @@ class LocalExperimentTracker:
             db_path: Path to SQLite database file
             artifacts_path: Path to store artifacts
         """
-        self.db_path = db_path or Path.home() / ".mcp-mlops" / "experiments.db"
-        self.artifacts_path = artifacts_path or Path.home() / ".mcp-mlops" / "artifacts"
+        self.db_path = db_path or Path.home() / ".mcp-ds-toolkit" / "experiments.db"
+        self.artifacts_path = artifacts_path or Path.home() / ".mcp-ds-toolkit" / "artifacts"
         
         # Ensure directories exist
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.artifacts_path.mkdir(parents=True, exist_ok=True)
+        ensure_directory(self.db_path.parent)
+        self.artifacts_path = ensure_directory(self.artifacts_path)
         
         # Initialize database
         self._init_database()
@@ -124,7 +129,7 @@ class LocalExperimentTracker:
                 """, (experiment_id, name, artifact_location, current_time, current_time))
                 
                 # Create artifact directory
-                Path(artifact_location).mkdir(parents=True, exist_ok=True)
+                ensure_directory(Path(artifact_location))
                 
                 return experiment_id
             except sqlite3.IntegrityError:
@@ -187,7 +192,7 @@ class LocalExperimentTracker:
             """, (run_id, experiment_id, run_name, current_time, artifact_uri))
         
         # Create run artifact directory
-        Path(artifact_uri).mkdir(parents=True, exist_ok=True)
+        ensure_directory(Path(artifact_uri))
         
         self._current_experiment_id = experiment_id
         self._current_run_id = run_id
@@ -281,7 +286,7 @@ class LocalExperimentTracker:
             dest_path = artifact_uri / local_path.name
         
         # Create destination directory
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_directory(dest_path.parent)
         
         # Copy file
         import shutil
@@ -311,7 +316,7 @@ class LocalExperimentTracker:
         
         # Save model using joblib
         model_dir = artifact_uri / artifact_path
-        model_dir.mkdir(parents=True, exist_ok=True)
+        model_dir = ensure_directory(model_dir)
         
         model_path = model_dir / "model.pkl"
         joblib.dump(model, model_path)

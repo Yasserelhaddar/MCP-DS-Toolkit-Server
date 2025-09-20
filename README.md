@@ -418,10 +418,7 @@ pip install --user mcp-ds-toolkit-server
 - Increase Python memory limit if needed
 
 ### Getting Help
-
-- **Documentation**: See our [detailed guides](https://github.com/Yasserelhaddar/MCP-DS-Toolkit-Server/wiki)
 - **Issues**: Report bugs on [GitHub Issues](https://github.com/Yasserelhaddar/MCP-DS-Toolkit-Server/issues)
-- **Discussions**: Join our [community forum](https://github.com/Yasserelhaddar/MCP-DS-Toolkit-Server/discussions)
 
 ## 🤝 Contributing
 

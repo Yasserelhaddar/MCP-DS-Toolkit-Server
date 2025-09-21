@@ -95,12 +95,29 @@ Add to your Claude Desktop configuration file:
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
+**Basic Configuration:**
 ```json
 {
   "mcpServers": {
     "ds-toolkit": {
       "command": "uvx",
       "args": ["mcp-ds-toolkit-server"]
+    }
+  }
+}
+```
+
+**With Custom Data Directory:**
+```json
+{
+  "mcpServers": {
+    "ds-toolkit": {
+      "command": "uvx",
+      "args": [
+        "mcp-ds-toolkit-server",
+        "--mcp-dir",
+        "/path/to/your/mcp-data"
+      ]
     }
   }
 }
@@ -134,12 +151,29 @@ Create or edit the MCP configuration file:
 **Project-specific**: `.cursor/mcp.json` (in your project root)
 **Global**: `~/.cursor/mcp.json` (in your home directory)
 
+**Basic Configuration:**
 ```json
 {
   "mcpServers": {
     "ds-toolkit": {
       "command": "uvx",
       "args": ["mcp-ds-toolkit-server"]
+    }
+  }
+}
+```
+
+**With Custom Data Directory:**
+```json
+{
+  "mcpServers": {
+    "ds-toolkit": {
+      "command": "uvx",
+      "args": [
+        "mcp-ds-toolkit-server",
+        "--mcp-dir",
+        "/path/to/your/mcp-data"
+      ]
     }
   }
 }

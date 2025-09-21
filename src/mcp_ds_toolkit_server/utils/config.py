@@ -102,7 +102,7 @@ class Settings:
 
     # Application settings
     app_name: str = field(default="mcp-ds-toolkit-server")
-    app_version: str = field(default="0.2.9")
+    app_version: str = field(default="0.3.0")
     app_description: str = field(
         default="MCP DS Toolkit Server - A comprehensive DS toolkit with natural language interface"
     )
